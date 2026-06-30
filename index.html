@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>信号渋滞シミュレーション（密度・ポアソン到着）</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#141b24; --panel2:#1b2430; --line:#283443;
+    --ink:#e7edf3; --ink-dim:#93a2b3;
+    --accent:#37c2c4; --accent-soft:#1f5a5b;
+    --red:#ff5a52; --green:#3ad07a; --amber:#ffc24b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:18px 16px 40px}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-size:18px;font-weight:650;letter-spacing:.02em;margin:0}
+  .sub{color:var(--ink-dim);font-size:12px;line-height:1.5}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;position:relative;overflow:hidden;margin-bottom:14px}
+  .panel h2{font-size:12px;font-weight:550;color:var(--ink-dim);margin:0 0 8px 2px;letter-spacing:.02em}
+  canvas{display:block;width:100%}
+  #err{display:none;color:var(--red);font-family:var(--mono);font-size:12px;white-space:pre-wrap;padding:8px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--ink-dim);font-size:11.5px;margin-top:8px;padding:0 2px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+  @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .stat .k{color:var(--ink-dim);font-size:11px;letter-spacing:.02em}
+  .stat .v{font-family:var(--mono);font-size:24px;font-weight:600;line-height:1.15;margin-top:3px}
+  .stat .u{font-size:11px;color:var(--ink-dim);font-weight:400}
+  .stat .v small{font-size:11px;color:var(--ink-dim);font-weight:400}
+  .stat.lead .v{color:var(--accent)}
+  .status{font-family:var(--mono);font-size:18px;padding:3px 12px;border-radius:7px;display:inline-block}
+  .st-over{background:#3a1d16;color:#ff9a7a} .st-under{background:#103029;color:#5fe0a8}
+  .controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:620px){.controls{grid-template-columns:1fr}}
+  .ctrl{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .ctrl .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .ctrl label{font-size:12.5px;color:var(--ink)}
+  .ctrl .val{font-family:var(--mono);font-size:13px;color:var(--accent)}
+  input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:4px;border-radius:4px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--panel);box-shadow:0 0 0 1px var(--accent)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--panel)}
+  .hint{color:var(--ink-dim);font-size:11px;margin-top:6px;line-height:1.45}
+  .info{font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);margin:2px 0 14px;display:flex;gap:18px;flex-wrap:wrap}
+  .bar{display:flex;gap:10px;align-items:center;margin:6px 0 14px;flex-wrap:wrap}
+  button{font-family:var(--sans);font-size:13px;font-weight:550;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 16px;cursor:pointer;transition:.12s}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent-soft);border-color:var(--accent);color:#eafdfd}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .clock{font-family:var(--mono);font-size:12.5px;color:var(--ink-dim);margin-left:auto}
+  .clock b{color:var(--ink);font-weight:600}
+  .speedseg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .speedseg button{border:0;border-radius:0;padding:8px 12px;background:var(--panel)}
+  .speedseg button.on{background:var(--accent-soft);color:#eafdfd}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>信号渋滞シミュレーション（密度ベース）</h1>
+    <span class="sub">定数：計測区間 3000m ／ 車長 3m ／ 最低車間 3m ／ サイクル 60s ／ 速度 v = 40(1 − 3/r) km/h（r = 前方との車間 m）<br>信号は区間に等間隔（間隔 = 3000/(n+1) m）。到着はポアソン過程。渋滞は密度（= 区間内台数 ÷ 区間長, 台/km）で評価。</span>
+  </header>
+
+  <div class="panel">
+    <h2>道路（3000mを折り返し表示・各行 左→右へ進行）</h2>
+    <canvas id="road"></canvas>
+    <pre id="err"></pre>
+    <div class="legend">
+      <span><i style="background:#ff5a52"></i>停止・低速</span>
+      <span><i style="background:#ffc24b"></i>中速</span>
+      <span><i style="background:#3ad07a"></i>快走</span>
+      <span><i style="background:#566;border:1px solid #888"></i>信号（赤/緑の停止線）</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat lead"><div class="k">現在密度</div><div class="v"><span id="s-dens">0.0</span> <span class="u">台/km</span> <small id="s-n">(0台)</small></div></div>
+    <div class="stat"><div class="k">平均密度</div><div class="v"><span id="s-davg">0.0</span> <span class="u">台/km</span></div></div>
+    <div class="stat"><div class="k">最大密度</div><div class="v"><span id="s-dmax">0.0</span> <span class="u">台/km</span></div></div>
+    <div class="stat"><div class="k">渋滞判定（臨界密度比）</div><div class="v" style="font-size:16px"><span id="s-rat">—</span> <span class="status st-under" id="s-stat">—</span></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>密度の推移（台/km・直近10分／橙破線=臨界密度・赤破線=ジャム密度）</h2>
+    <canvas id="dens"></canvas>
+  </div>
+
+  <div class="bar">
+    <button id="btn-play" class="primary">⏸ 一時停止</button>
+    <button id="btn-reset">↺ リセット</button>
+    <span class="speedseg" id="speedseg">
+      <button data-m="1">1×</button>
+      <button data-m="2">2×</button>
+      <button data-m="4" class="on">4×</button>
+      <button data-m="8">8×</button>
+    </span>
+    <span class="clock">経過 <b id="s-time">0.0</b> min ／ 先頭信号 <b id="s-phase">青</b></span>
+  </div>
+
+  <div class="info">
+    <span>到着率 λ = <span id="d-lam">12</span> 台/min</span>
+    <span>入口待ち = <span id="d-q">0</span> 台</span>
+    <span>臨界密度 ≒ <span id="d-kcrit">0</span> 台/km</span>
+    <span>ジャム密度 ≒ <span id="d-kjam">0</span> 台/km</span>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl">
+      <div class="row"><label for="nsig">信号の数（区間に等間隔）</label><span class="val"><span id="nsig-v">5</span> 基 ／ 間隔 <span id="d-sp">500</span> m</span></div>
+      <input type="range" id="nsig" min="1" max="12" step="1" value="5">
+      <div class="hint">n 基を 3000/(n+1) 間隔で配置。</div>
+    </div>
+
+    <div class="ctrl">
+      <div class="row"><label for="lam">ポアソン到着率 λ</label><span class="val" id="lam-v">12 台/min</span></div>
+      <input type="range" id="lam" min="2" max="40" step="1" value="12">
+      <div class="hint">平均 λ 台/min で到着。入口に空き（6m）が無い到着は待ち行列へ。</div>
+    </div>
+
+    <div class="ctrl">
+      <div class="row"><label for="g">青の割合（青:赤の点灯比率）</label><span class="val" id="g-v">青30s / 赤30s</span></div>
+      <input type="range" id="g" min="0.2" max="0.8" step="0.05" value="0.5">
+      <div class="hint">サイクル60s に対する青の比率 g。緑 = 60g 秒、赤 = 60(1−g) 秒。</div>
+    </div>
+
+    <div class="ctrl">
+      <div class="row"><label for="off">オフセット（下流信号の青の遅れ）</label><span class="val" id="off-v">0 s</span></div>
+      <input type="range" id="off" min="0" max="40" step="1" value="0">
+      <div class="hint">信号 i の位相を i×オフセット だけ遅らせる。約 <span id="d-ideal">90</span> s で「青の波」になり渋滞が減る。</div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function(){
+function fail(e){ var b=document.getElementById('err'); if(b){b.style.display='block';b.textContent='エラー: '+(e&&e.message?e.message:e);} console.error(e); }
+try{
+  // ===== 定数（単位: m, min, m/min）=====
+  var VFREE=2000/3;            // 40 km/h
+  var CARLEN=3, JAMGAP=3;      // 車長3m・最低車間3m → ジャム間隔6m
+  var L=3000, CYCLE=1, DT=0.01, WARMUP=1;
+  var K_JAM=1000/(CARLEN+JAMGAP);          // 166.7 台/km
+  function vEq(r){ if(r<=JAMGAP) return 0; var v=VFREE*(1-JAMGAP/r); return v<0?0:(v>VFREE?VFREE:v); }
+  var K_CRIT=(function(){ var best=0,kc=0; for(var r=JAMGAP+0.05;r<=300;r+=0.05){ var q=vEq(r)/(r+CARLEN); if(q>best){best=q; kc=1000/(r+CARLEN);} } return kc; })();
+  function spacing(){ return L/(P.n+1); }
+  function idealOff(){ return spacing()/VFREE*60; } // 秒
+
+  // ===== 可変パラメータ =====
+  var P={n:5, lam:12, g:0.5, offSec:0};
+  function offMin(){ return P.offSec/60; }
+  function sigArr(){ var a=[]; for(var i=1;i<=P.n;i++) a.push({p:i*L/(P.n+1), idx:i}); return a; }
+  function isGreen(t,idx){ var ph=((t-idx*offMin())%CYCLE+CYCLE)%CYCLE; return ph < P.g*CYCLE; }
+  function redAhead(x,t,sa){ for(var i=0;i<sa.length;i++){ if(sa[i].p>=x && !isGreen(t,sa[i].idx)) return sa[i].p; } return Infinity; }
+  function expSample(lam){ if(lam<=0) return Infinity; return -Math.log(1-Math.random())/lam; }
+
+  // ===== 状態 =====
+  var cars=[], simT=0, running=true, speedMult=4;
+  var Q=0, nextArr=0;
+  var densSum=0, densCnt=0, densMax=0, densSeries=[];
+  var lastChart=0, WINDOW=10;
+
+  function resetSim(){ cars=[]; simT=0; Q=0; nextArr=expSample(P.lam); densSum=0; densCnt=0; densMax=0; densSeries=[]; lastChart=0; }
+  function countN(){ var n=0; for(var i=0;i<cars.length;i++){var x=cars[i].x; if(x>=0&&x<=L)n++;} return n; }
+  function density(){ return countN()*1000/L; }
+
+  // ===== 1ステップ =====
+  function step(){
+    simT+=DT;
+    while(simT>=nextArr){ Q++; nextArr+=expSample(P.lam); }
+    var sa=sigArr();
+    cars.sort(function(a,b){return b.x-a.x;});
+    for(var i=0;i<cars.length;i++){
+      var obs=Infinity;
+      if(i>0) obs=cars[i-1].x-CARLEN;
+      var p=redAhead(cars[i].x,simT,sa); if(p<Infinity) obs=Math.min(obs,p);
+      cars[i].v=vEq(obs-cars[i].x);
+    }
+    for(var i=0;i<cars.length;i++) cars[i].x+=cars[i].v*DT;
+    cars.sort(function(a,b){return b.x-a.x;});
+    for(var i=0;i<cars.length;i++){
+      var cap=Infinity;
+      var p=redAhead(cars[i].x,simT,sa); if(p<Infinity) cap=Math.min(cap,p);
+      if(i>0) cap=Math.min(cap, cars[i-1].x-CARLEN-JAMGAP);
+      if(cars[i].x>cap) cars[i].x=cap;
+    }
+    var kept=[];
+    for(var i=0;i<cars.length;i++){ if(cars[i].x<L) kept.push(cars[i]); }
+    cars=kept;
+    var k=density();
+    if(simT>=WARMUP){ densSum+=k; densCnt++; if(k>densMax) densMax=k; }
+    if(simT-lastChart>=0.1){ densSeries.push({t:simT,k:k}); while(densSeries.length && simT-densSeries[0].t>WINDOW+0.5) densSeries.shift(); lastChart=simT; }
+    var minx=Infinity; for(var i=0;i<cars.length;i++) if(cars[i].x<minx) minx=cars[i].x;
+    if(Q>0 && (cars.length===0 || minx>=CARLEN+JAMGAP)){ cars.push({x:0,v:0}); Q--; }
+  }
+
+  // ===== 道路描画（軽量: fillRect 中心）=====
+  var road=document.getElementById('road'), rctx=road.getContext('2d');
+  var CW=800,CH=300,dpr=1,rows=9,rowM=333,scale=1,leftPad=10,topPad=20,rowH=30;
+  var MONO='ui-monospace,Menlo,Consolas,monospace';
+  function layoutRoad(){
+    dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+    CW=road.parentElement.clientWidth-24; if(CW<280)CW=280;
+    leftPad=10; var innerW=CW-leftPad*2;
+    rows=Math.max(6,Math.min(14,Math.round(L*2.2/innerW)));
+    rowM=L/rows; scale=innerW/rowM; rowH=30; topPad=20;
+    CH=topPad+rows*rowH+10;
+    road.style.width=CW+'px'; road.style.height=CH+'px';
+    road.width=CW*dpr; road.height=CH*dpr; rctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  function place(m){ var row=Math.floor(m/rowM); if(row>=rows)row=rows-1; if(row<0)row=0; var local=m-row*rowM; return {x:leftPad+local*scale, y:topPad+row*rowH+rowH/2}; }
+  function speedColor(v){ var r=v/VFREE; if(r<0) r=0; if(r>1) r=1; var t;
+    if(r<0.5){t=r/0.5;return 'hsl('+(4+t*44)+',90%,'+(56+t*4)+'%)';}
+    t=(r-0.5)/0.5; return 'hsl('+(48+t*94)+',72%,'+(56-t*4)+'%)'; }
+  function drawRoad(){
+    rctx.clearRect(0,0,CW,CH);
+    var h=rowH*0.58;
+    rctx.fillStyle='#222a35';
+    for(var r=0;r<rows;r++){ var y=topPad+r*rowH+rowH/2; rctx.fillRect(leftPad-3,y-h/2,CW-2*leftPad+6,h); }
+    rctx.fillStyle='#93a2b3'; rctx.font='9px '+MONO; rctx.textAlign='left'; rctx.textBaseline='middle'; rctx.globalAlpha=.45;
+    for(var r=0;r<rows;r++){ var y=topPad+r*rowH+rowH/2; rctx.fillText(((r*rowM)|0)+'m',leftPad+1,y-h/2-5); }
+    rctx.globalAlpha=1;
+    var sa=sigArr();
+    for(var s=0;s<sa.length;s++){ var g=isGreen(simT,sa[s].idx), pos=place(sa[s].p);
+      rctx.fillStyle=g?'#3ad07a':'#ff5a52'; rctx.globalAlpha=g?0.5:0.9; rctx.fillRect(pos.x-1.3,pos.y-h/2,2.6,h); }
+    rctx.globalAlpha=1;
+    var clen=Math.max(5,CARLEN*scale), cw=Math.min(rowH*0.4,Math.max(3.5,clen*0.7));
+    for(var i=0;i<cars.length;i++){ var c=cars[i]; if(c.x<0||c.x>L) continue;
+      var p2=place(c.x); rctx.fillStyle=speedColor(c.v); rctx.fillRect(p2.x-clen,p2.y-cw/2,clen,cw); }
+  }
+
+  // ===== 密度チャート =====
+  var dens=document.getElementById('dens'), dctx=dens.getContext('2d');
+  var DW=800,DH=150;
+  function layoutDens(){ DW=dens.parentElement.clientWidth-24; if(DW<280)DW=280; DH=150;
+    dens.style.width=DW+'px'; dens.style.height=DH+'px'; dens.width=DW*dpr; dens.height=DH*dpr; dctx.setTransform(dpr,0,0,dpr,0,0); }
+  function drawDens(){
+    dctx.clearRect(0,0,DW,DH);
+    var pL=46,pR=12,pT=10,pB=20, x0=pL,x1=DW-pR,y0=DH-pB,y1=pT, kmax=K_JAM;
+    function CY(k){ return y0-Math.min(k,kmax)/kmax*(y0-y1); }
+    var t1=simT, t0=Math.max(0,simT-WINDOW), span=Math.max(0.001,t1-t0);
+    function TX(t){ return x0+(t-t0)/span*(x1-x0); }
+    dctx.font='10px '+MONO; dctx.textBaseline='middle'; dctx.textAlign='right';
+    for(var gk=0;gk<=4;gk++){ var kk=kmax*gk/4, yy=CY(kk);
+      dctx.strokeStyle='#283443'; dctx.globalAlpha=.6; dctx.beginPath();dctx.moveTo(x0,yy);dctx.lineTo(x1,yy);dctx.stroke(); dctx.globalAlpha=1;
+      dctx.fillStyle='#93a2b3'; dctx.fillText(Math.round(kk),x0-5,yy); }
+    dctx.setLineDash([5,4]); dctx.lineWidth=1.2;
+    dctx.strokeStyle='#ffc24b'; dctx.beginPath();dctx.moveTo(x0,CY(K_CRIT));dctx.lineTo(x1,CY(K_CRIT));dctx.stroke();
+    dctx.strokeStyle='#ff5a52'; dctx.beginPath();dctx.moveTo(x0,CY(K_JAM));dctx.lineTo(x1,CY(K_JAM));dctx.stroke();
+    dctx.setLineDash([]);
+    if(densSeries.length>1){
+      dctx.beginPath();
+      for(var j=0;j<densSeries.length;j++){ var xx=TX(densSeries[j].t), yy=CY(densSeries[j].k); if(j) dctx.lineTo(xx,yy); else dctx.moveTo(xx,yy); }
+      dctx.strokeStyle='#37c2c4'; dctx.lineWidth=2; dctx.stroke();
+      dctx.lineTo(TX(t1),y0); dctx.lineTo(TX(densSeries[0].t),y0); dctx.closePath();
+      dctx.fillStyle='rgba(55,194,196,0.12)'; dctx.fill();
+    }
+  }
+
+  // ===== HUD =====
+  function updateHUD(){
+    var k=density(), N=countN();
+    document.getElementById('s-dens').textContent=k.toFixed(1);
+    document.getElementById('s-n').textContent='('+N+'台)';
+    document.getElementById('s-davg').textContent=(densCnt?densSum/densCnt:0).toFixed(1);
+    document.getElementById('s-dmax').textContent=densMax.toFixed(1);
+    var ratio=k/K_CRIT;
+    document.getElementById('s-rat').textContent=ratio.toFixed(2);
+    var el=document.getElementById('s-stat');
+    if(ratio>1){ el.textContent='渋滞'; el.className='status st-over'; }
+    else{ el.textContent='順調'; el.className='status st-under'; }
+    document.getElementById('d-q').textContent=Q;
+    document.getElementById('s-time').textContent=simT.toFixed(1);
+    var sa=sigArr();
+    document.getElementById('s-phase').textContent=(sa.length&&isGreen(simT,sa[0].idx))?'青':'赤';
+  }
+
+  // ===== ループ =====
+  var lastTs=performance.now(), accMin=0, lastSlow=0;
+  function frame(ts){
+    try{
+      var realSec=Math.min(0.05,(ts-lastTs)/1000); lastTs=ts;
+      if(running){ accMin+=(realSec/60)*speedMult; var guard=0; while(accMin>=DT && guard<400){ step(); accMin-=DT; guard++; } }
+      drawRoad(); updateHUD();
+      if(ts-lastSlow>150){ drawDens(); lastSlow=ts; }
+    }catch(e){ fail(e); return; }
+    requestAnimationFrame(frame);
+  }
+
+  // ===== コントロール =====
+  function bindRange(id,fmt,set){ var el=document.getElementById(id),out=document.getElementById(id+'-v');
+    function upd(){ var v=parseFloat(el.value); set(v); if(out)out.textContent=fmt(v); } el.addEventListener('input',upd); upd(); }
+  function refreshSig(){ document.getElementById('d-sp').textContent=Math.round(spacing()); document.getElementById('d-ideal').textContent=idealOff().toFixed(0); }
+  document.getElementById('nsig').addEventListener('input',function(){ P.n=parseInt(this.value,10); document.getElementById('nsig-v').textContent=P.n; refreshSig(); });
+  document.getElementById('nsig').dispatchEvent(new Event('input'));
+  bindRange('lam', function(v){return v+' 台/min';}, function(v){ P.lam=v; nextArr=simT+expSample(v); document.getElementById('d-lam').textContent=v; });
+  bindRange('g', function(v){ return '青'+Math.round(60*v)+'s / 赤'+Math.round(60*(1-v))+'s'; }, function(v){ P.g=v; });
+  bindRange('off', function(v){return v+' s';}, function(v){ P.offSec=v; });
+
+  document.getElementById('btn-play').addEventListener('click',function(e){ running=!running; e.target.textContent=running?'⏸ 一時停止':'▶ 再生'; e.target.classList.toggle('primary',running); });
+  document.getElementById('btn-reset').addEventListener('click',resetSim);
+  var seg=document.querySelectorAll('#speedseg button');
+  for(var b=0;b<seg.length;b++) seg[b].addEventListener('click',function(){ for(var z=0;z<seg.length;z++) seg[z].classList.remove('on'); this.classList.add('on'); speedMult=parseFloat(this.dataset.m); });
+
+  window.addEventListener('resize',function(){ layoutRoad(); layoutDens(); });
+  document.getElementById('d-kcrit').textContent=K_CRIT.toFixed(0);
+  document.getElementById('d-kjam').textContent=K_JAM.toFixed(0);
+  refreshSig();
+  nextArr=expSample(P.lam);
+  layoutRoad(); layoutDens(); requestAnimationFrame(frame);
+}catch(e){ fail(e); }
+})();
+</script>
+</body>
+</html>
