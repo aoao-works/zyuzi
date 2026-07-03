@@ -368,8 +368,10 @@ try{
   }
   // dir(NB/SB/EB/WB) + seg(in/out) + 距離x(m, 0=遠端側 or 交差点直後, armLen=交差点側 or 遠端) → 画面座標
   // 表示は交差点近傍(viewRange)だけをズームして描画する。遠い車は描画上は範囲外になり非表示。
+  // in側は「停止線からの距離」を基準にズームする（armLenがviewRangeより長い場合、停止線の位置が
+  // ズレて車が停止線に着く前に描画範囲外へ消え、信号待ちが見えなくなるのを防ぐ）。
   function segPos(d, seg, xm){
-    var vr=viewRange(), t=xm/vr;
+    var vr=viewRange(), t = seg==='in' ? (1-(P.armLen-xm)/vr) : (xm/vr);
     if(d==='NB'){ return { x:cx-laneOff, y: seg==='in' ? (cy+boxHalf+armPix*(1-t)) : (cy-boxHalf-armPix*t) }; }
     if(d==='SB'){ return { x:cx+laneOff, y: seg==='in' ? (cy-boxHalf-armPix*(1-t)) : (cy+boxHalf+armPix*t) }; }
     if(d==='EB'){ return { x: seg==='in' ? (cx-boxHalf-armPix*(1-t)) : (cx+boxHalf+armPix*t), y:cy-laneOff }; }
@@ -403,23 +405,21 @@ try{
     rctx.fillRect(cx+0,cy-boxHalf-1.5,laneOff*2,3);                    // SB stop (north side, east lane)
     rctx.fillRect(cx-boxHalf-1.5,cy+0,3,laneOff*2);                    // EB stop (west side, north lane)
     rctx.fillRect(cx+boxHalf-1.5,cy-boxHalf-laneOff*2,3,laneOff*2);    // WB stop (east side, south lane)
-    // 信号：各アームの停止線のすぐそばに、その方向専用の信号機を「赤/青」の文字付きで表示する
+    // 信号：右上に1つだけパネルを置き、現在青の方向（上下／左右）だけを表示する
     var gNS=isGreenNS(simT);
-    // side: 'right'|'left' はラベル文字を灯器のどちら側に出すか
-    function drawSignalAt(x,y,green,side){
-      rctx.fillStyle='#0b0f14'; rctx.fillRect(x-7,y-16,14,32);
-      rctx.strokeStyle='#3a4655'; rctx.lineWidth=1; rctx.strokeRect(x-7,y-16,14,32);
-      rctx.beginPath(); rctx.arc(x,y-8,4.5,0,Math.PI*2); rctx.fillStyle=green?'#5a2420':'#ff5a52'; rctx.fill();
-      rctx.beginPath(); rctx.arc(x,y+8,4.5,0,Math.PI*2); rctx.fillStyle=green?'#3ad07a':'#1f4a34'; rctx.fill();
-      rctx.font='bold 12px '+MONO; rctx.textBaseline='middle';
-      rctx.fillStyle=green?'#3ad07a':'#ff5a52';
-      if(side==='right'){ rctx.textAlign='left'; rctx.fillText(green?'青':'赤', x+11, y); }
-      else{ rctx.textAlign='right'; rctx.fillText(green?'青':'赤', x-11, y); }
+    function drawSignalPanel(gNS){
+      var label=gNS?'上下':'左右';
+      var pw=118, ph=40, px=CW-pw-12, py=12, y=py+ph/2;
+      rctx.globalAlpha=0.94; rctx.fillStyle='#0b0f14'; rctx.fillRect(px,py,pw,ph);
+      rctx.globalAlpha=1; rctx.strokeStyle='#3a4655'; rctx.lineWidth=1; rctx.strokeRect(px,py,pw,ph);
+      rctx.beginPath(); rctx.arc(px+18,y,7,0,Math.PI*2);
+      rctx.fillStyle='#3ad07a'; rctx.fill();
+      rctx.strokeStyle='#000'; rctx.globalAlpha=.25; rctx.lineWidth=1; rctx.stroke(); rctx.globalAlpha=1;
+      rctx.font='bold 13px '+MONO; rctx.textAlign='left'; rctx.textBaseline='middle';
+      rctx.fillStyle='#3ad07a';
+      rctx.fillText(label+'：青', px+32, y);
     }
-    drawSignalAt(cx+laneOff+16, cy-boxHalf-18, gNS, 'right');   // 北アーム（南行き流入）
-    drawSignalAt(cx-laneOff-16, cy+boxHalf+18, gNS, 'left');    // 南アーム（北行き流入）
-    drawSignalAt(cx-boxHalf-16, cy-laneOff-18, !gNS, 'left');   // 西アーム（東行き流入）
-    drawSignalAt(cx+boxHalf+16, cy+laneOff+18, !gNS, 'right');  // 東アーム（西行き流入）
+    drawSignalPanel(gNS);
     rctx.textAlign='left';
 
     // 車両描画：長さ(進行方向)は車間から逆算し重ならない最大値、太さは視認性優先で固定気味に
@@ -432,7 +432,9 @@ try{
     var vr=viewRange();
     function drawSeg(d, seg, vertical){
       var arr=L[d+'_'+seg];
-      for(var i=0;i<arr.length;i++){ var c=arr[i]; if(c.x<0||c.x>vr) continue;
+      for(var i=0;i<arr.length;i++){ var c=arr[i];
+        if(seg==='in'){ var dist=P.armLen-c.x; if(dist<0||dist>vr) continue; }
+        else if(c.x<0||c.x>vr) continue;
         var p=segPos(d,seg,c.x); drawCar(p, vertical, turnColor(c), speedAlpha(c.v)); }
     }
     drawSeg('NB','in',true); drawSeg('NB','out',true);
