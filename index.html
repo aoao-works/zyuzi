@@ -213,17 +213,27 @@ try{
   function waitingCount(d){ var arr=L[d+'_in'], c=0; for(var i=0;i<arr.length;i++){ if(arr[i].turn==='R'&&arr[i].waiting) c++; } return c; }
 
   // 対向車線（opposite）に、直進・左折する車が交差点から gapD m 以内にいないか
+  // 停止中（渋滞で詰まっているだけ）の対向車は実際には交差点に迫ってこないので、
+  // ギャップ判定では「動いている」対向車だけを脅威とみなす（そうしないと対向車線が
+  // 渋滞した瞬間に右折が永久に不可能になり、デッドロックする）。
+  var V_MOVE_EPS=VFREE*0.03;
+  // それでも一定時間ギャップが来ない場合は強行して詰まりを解消する（現実の運転行動に近い安全弁）
+  var MAX_RIGHT_WAIT=1.0; // 1分（信号1サイクル分）
+
   function computeGapOpen(oppCars, gapD){
     for(var j=0;j<oppCars.length;j++){
       var c=oppCars[j];
-      if((c.turn==='S'||c.turn==='L') && (P.armLen-c.x)<=gapD) return false;
+      if((c.turn==='S'||c.turn==='L') && c.v>V_MOVE_EPS && (P.armLen-c.x)<=gapD) return false;
     }
     return true;
   }
   function stopLineObs(car, green, gapOpen){
-    if(!green) return P.armLen;
+    if(!green){ car.rWaitStart=null; return P.armLen; }
     if(car.turn!=='R') return Infinity;
-    return gapOpen ? Infinity : P.armLen;
+    if(gapOpen){ car.rWaitStart=null; return Infinity; }
+    if(car.rWaitStart==null) car.rWaitStart=simT;
+    if(simT-car.rWaitStart>=MAX_RIGHT_WAIT) return Infinity; // 強行突破
+    return P.armLen;
   }
 
   function advanceInbound(d, green, gapOpen){
@@ -273,7 +283,8 @@ try{
     for(var i=0;i<arr.length;i++){
       var car=arr[i];
       if(car.x>=P.armLen-1e-6){
-        var can=green && (car.turn!=='R' || gapOpen);
+        var sp=stopLineObs(car, green, gapOpen);
+        var can=green && (car.turn!=='R' || sp===Infinity);
         if(can){
           STAT['passed'+car.turn]++;
           var destDir=TURN_MAP[d][car.turn];
@@ -302,7 +313,7 @@ try{
     var minx=Infinity;
     for(var i=0;i<arr.length;i++) if(arr[i].x<minx) minx=arr[i].x;
     if(arr.length===0 || minx>=CARLEN+JAMGAP){
-      arr.push({x:0,v:0,turn:sampleTurn(),arriveT:simT,waiting:false});
+      arr.push({x:0,v:0,turn:sampleTurn(),arriveT:simT,waiting:false,rWaitStart:null});
       Q[d]--;
     }
   }
@@ -341,21 +352,24 @@ try{
 
   // ===== 交差点描画 =====
   var road=document.getElementById('road'), rctx=road.getContext('2d');
-  var CW=800,CH=560,dpr=1,cx=400,cy=280,boxHalf=22,laneOff=9,armPix=200,scale=1;
+  var CW=800,CH=560,dpr=1,cx=400,cy=280,boxHalf=30,laneOff=13,armPix=200,scale=1;
   var MONO='ui-monospace,Menlo,Consolas,monospace';
+  // 交差点付近だけを大きく表示するズーム表示範囲(m)。armLenがこれより短ければarmLenに合わせる。
+  function viewRange(){ return Math.min(P.armLen, 110); }
   function layoutRoad(){
     dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
     CW=road.parentElement.clientWidth-24; if(CW<340)CW=340;
-    CH=Math.max(380,Math.min(CW*0.85,620));
+    CH=Math.max(420,Math.min(CW*0.9,680));
     road.style.width=CW+'px'; road.style.height=CH+'px';
     road.width=CW*dpr; road.height=CH*dpr; rctx.setTransform(dpr,0,0,dpr,0,0);
     cx=CW/2; cy=CH/2;
-    armPix=Math.max(60, Math.min(cx,cy)-boxHalf-26);
-    scale=armPix/P.armLen;
+    armPix=Math.max(60, Math.min(cx,cy)-boxHalf-30);
+    scale=armPix/viewRange();
   }
   // dir(NB/SB/EB/WB) + seg(in/out) + 距離x(m, 0=遠端側 or 交差点直後, armLen=交差点側 or 遠端) → 画面座標
+  // 表示は交差点近傍(viewRange)だけをズームして描画する。遠い車は描画上は範囲外になり非表示。
   function segPos(d, seg, xm){
-    var t=xm/P.armLen;
+    var vr=viewRange(), t=xm/vr;
     if(d==='NB'){ return { x:cx-laneOff, y: seg==='in' ? (cy+boxHalf+armPix*(1-t)) : (cy-boxHalf-armPix*t) }; }
     if(d==='SB'){ return { x:cx+laneOff, y: seg==='in' ? (cy-boxHalf-armPix*(1-t)) : (cy+boxHalf+armPix*t) }; }
     if(d==='EB'){ return { x: seg==='in' ? (cx-boxHalf-armPix*(1-t)) : (cx+boxHalf+armPix*t), y:cy-laneOff }; }
@@ -389,12 +403,24 @@ try{
     rctx.fillRect(cx+0,cy-boxHalf-1.5,laneOff*2,3);                    // SB stop (north side, east lane)
     rctx.fillRect(cx-boxHalf-1.5,cy+0,3,laneOff*2);                    // EB stop (west side, north lane)
     rctx.fillRect(cx+boxHalf-1.5,cy-boxHalf-laneOff*2,3,laneOff*2);    // WB stop (east side, south lane)
-    // 信号（南北・東西）
+    // 信号：各アームの停止線のすぐそばに、その方向専用の信号機を「赤/青」の文字付きで表示する
     var gNS=isGreenNS(simT);
-    rctx.beginPath(); rctx.arc(cx-boxHalf-14,cy-boxHalf-14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#3ad07a':'#ff5a52'; rctx.fill();
-    rctx.beginPath(); rctx.arc(cx+boxHalf+14,cy+boxHalf+14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#3ad07a':'#ff5a52'; rctx.fill();
-    rctx.beginPath(); rctx.arc(cx+boxHalf+14,cy-boxHalf-14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#ff5a52':'#3ad07a'; rctx.fill();
-    rctx.beginPath(); rctx.arc(cx-boxHalf-14,cy+boxHalf+14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#ff5a52':'#3ad07a'; rctx.fill();
+    // side: 'right'|'left' はラベル文字を灯器のどちら側に出すか
+    function drawSignalAt(x,y,green,side){
+      rctx.fillStyle='#0b0f14'; rctx.fillRect(x-7,y-16,14,32);
+      rctx.strokeStyle='#3a4655'; rctx.lineWidth=1; rctx.strokeRect(x-7,y-16,14,32);
+      rctx.beginPath(); rctx.arc(x,y-8,4.5,0,Math.PI*2); rctx.fillStyle=green?'#5a2420':'#ff5a52'; rctx.fill();
+      rctx.beginPath(); rctx.arc(x,y+8,4.5,0,Math.PI*2); rctx.fillStyle=green?'#3ad07a':'#1f4a34'; rctx.fill();
+      rctx.font='bold 12px '+MONO; rctx.textBaseline='middle';
+      rctx.fillStyle=green?'#3ad07a':'#ff5a52';
+      if(side==='right'){ rctx.textAlign='left'; rctx.fillText(green?'青':'赤', x+11, y); }
+      else{ rctx.textAlign='right'; rctx.fillText(green?'青':'赤', x-11, y); }
+    }
+    drawSignalAt(cx+laneOff+16, cy-boxHalf-18, gNS, 'right');   // 北アーム（南行き流入）
+    drawSignalAt(cx-laneOff-16, cy+boxHalf+18, gNS, 'left');    // 南アーム（北行き流入）
+    drawSignalAt(cx-boxHalf-16, cy-laneOff-18, !gNS, 'left');   // 西アーム（東行き流入）
+    drawSignalAt(cx+boxHalf+16, cy+laneOff+18, !gNS, 'right');  // 東アーム（西行き流入）
+    rctx.textAlign='left';
 
     // 車両描画：長さ(進行方向)は車間から逆算し重ならない最大値、太さは視認性優先で固定気味に
     var pitchPx=scale*(CARLEN+JAMGAP), clen=Math.max(3, pitchPx-2), cw=Math.max(6,Math.min(11,clen*0.95));
@@ -403,9 +429,10 @@ try{
       if(vertical) rctx.fillRect(p.x-cw/2, p.y-clen/2, cw, clen);
       else rctx.fillRect(p.x-clen/2, p.y-cw/2, clen, cw);
     }
+    var vr=viewRange();
     function drawSeg(d, seg, vertical){
       var arr=L[d+'_'+seg];
-      for(var i=0;i<arr.length;i++){ var c=arr[i]; if(c.x<0||c.x>P.armLen) continue;
+      for(var i=0;i<arr.length;i++){ var c=arr[i]; if(c.x<0||c.x>vr) continue;
         var p=segPos(d,seg,c.x); drawCar(p, vertical, turnColor(c), speedAlpha(c.v)); }
     }
     drawSeg('NB','in',true); drawSeg('NB','out',true);
