@@ -29,7 +29,7 @@
   @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
   .stat .k{color:var(--ink-dim);font-size:11px;letter-spacing:.02em}
-  .stat .v{font-family:var(--mono);font-size:20px;font-weight:600;line-height:1.15;margin-top:3px}
+  .stat .v{font-family:var(--mono);font-size:18px;font-weight:600;line-height:1.15;margin-top:3px}
   .stat .u{font-size:11px;color:var(--ink-dim);font-weight:400}
   .stat .v small{font-size:11px;color:var(--ink-dim);font-weight:400}
   .stat.lead .v{color:var(--accent)}
@@ -63,13 +63,14 @@
   <header>
     <h1>十字路渋滞シミュレーション（片側1車線・右折ラインなし）</h1>
     <span class="sub">
-      注目車線と対向車線のみを考える単一の信号交差点。速度モデル v = 40(1 − 3/r) km/h（r = 前方障害物との車間 m）、到着はポアソン過程は前回モデルを踏襲。<br>
-      各車両は到着時に (左折, 直進, 右折) = (1/4, 1/2, 1/4) の確率で進路を決定。左折は青なら常に自由。右折は対向車線で直進・左折する車両が交差点から一定距離 D 以内にいなければ実行でき、いなければ交差点手前で停止して待つ（右折専用レーンが無いため後続車もブロックされる）。
+      東西南北すべての方向から車が到着する単一の信号交差点。速度モデル v = 40(1 − 3/r) km/h（r = 前方障害物との車間 m）、到着はポアソン過程は前回モデルを踏襲。<br>
+      各車両は到着時に (左折, 直進, 右折) = (1/4, 1/2, 1/4) の確率で進路を決定。左折は青なら常に自由。右折は対向車線（同じ道路の反対方向）で直進・左折する車両が交差点から一定距離 D 以内にいなければ実行でき、いなければ交差点手前で停止して待つ（右折専用レーンが無いため後続車もブロックされる）。<br>
+      右左折・直進した車両は消滅せず、進んだ先の道路をそのまま走行し続け、マップ端まで到達して初めて退出する。信号は南北方向と東西方向で交互に青になる（2現示）。
     </span>
   </header>
 
   <div class="panel">
-    <h2>交差点（上から見た図・各車線は交差点へ向かって進行）</h2>
+    <h2>交差点（上から見た図・北が上）</h2>
     <canvas id="road"></canvas>
     <pre id="err"></pre>
     <div class="legend">
@@ -77,19 +78,19 @@
       <span><i style="background:#3ad07a"></i>左折</span>
       <span><i style="background:#ffc24b"></i>右折（通行可）</span>
       <span><i style="background:#ff5a52"></i>右折待ち／信号待ち</span>
-      <span><i style="background:#566;border:1px solid #888"></i>停止線</span>
+      <span><i style="background:#5c7480"></i>右左折・直進後（走行中）</span>
     </div>
   </div>
 
   <div class="stats">
-    <div class="stat lead"><div class="k">密度（注目／対向）</div><div class="v"><span id="s-densA">0.0</span> / <span id="s-densB">0.0</span> <span class="u">台/km</span></div></div>
-    <div class="stat"><div class="k">右折待ち行列（注目／対向）</div><div class="v"><span id="s-qA">0</span> / <span id="s-qB">0</span> <span class="u">台</span></div></div>
-    <div class="stat"><div class="k">平均通過所要時間</div><div class="v"><span id="s-travel">—</span> <span class="u">秒</span></div></div>
+    <div class="stat lead"><div class="k">密度（北行/南行/東行/西行）</div><div class="v" style="font-size:14.5px"><span id="s-dNB">0.0</span>/<span id="s-dSB">0.0</span>/<span id="s-dEB">0.0</span>/<span id="s-dWB">0.0</span> <span class="u">台/km</span></div></div>
+    <div class="stat"><div class="k">右折待ち（北行/南行/東行/西行）</div><div class="v" style="font-size:14.5px"><span id="s-qNB">0</span>/<span id="s-qSB">0</span>/<span id="s-qEB">0</span>/<span id="s-qWB">0</span> <span class="u">台</span></div></div>
+    <div class="stat"><div class="k">平均システム内滞在時間</div><div class="v"><span id="s-travel">—</span> <span class="u">秒</span></div></div>
     <div class="stat"><div class="k">渋滞判定（臨界密度比）</div><div class="v" style="font-size:16px"><span id="s-rat">—</span> <span class="status st-under" id="s-stat">—</span></div></div>
   </div>
 
   <div class="panel">
-    <h2>密度の推移（台/km・直近10分／実線=注目車線・破線=対向車線／橙細線=臨界密度・赤細線=ジャム密度）</h2>
+    <h2>密度の推移（台/km・直近10分／実線=南北軸・破線=東西軸／橙細線=臨界密度・赤細線=ジャム密度）</h2>
     <canvas id="dens"></canvas>
   </div>
 
@@ -102,47 +103,59 @@
       <button data-m="4" class="on">4×</button>
       <button data-m="8">8×</button>
     </span>
-    <span class="clock">経過 <b id="s-time">0.0</b> min ／ 信号 <b id="s-phase">青</b></span>
+    <span class="clock">経過 <b id="s-time">0.0</b> min ／ 信号 南北<b id="s-phaseNS">青</b>・東西<b id="s-phaseEW">赤</b></span>
   </div>
 
   <div class="info">
-    <span>到着率 λ注目 = <span id="d-lamA">10</span> 台/min ／ λ対向 = <span id="d-lamB">10</span> 台/min</span>
-    <span>入口待ち = <span id="d-qA">0</span> / <span id="d-qB">0</span> 台</span>
-    <span>右折ギャップ距離 D = <span id="d-gap">60</span> m</span>
+    <span>入口待ち 北<span id="d-qNB">0</span>/南<span id="d-qSB">0</span>/東<span id="d-qEB">0</span>/西<span id="d-qWB">0</span></span>
+    <span>右折ギャップ距離 D = <span id="d-gap">50</span> m</span>
     <span>臨界密度 ≒ <span id="d-kcrit">0</span> 台/km</span>
     <span>ジャム密度 ≒ <span id="d-kjam">0</span> 台/km</span>
     <span>累計通過 直進<span id="d-passS">0</span> ／ 左折<span id="d-passL">0</span> ／ 右折<span id="d-passR">0</span></span>
+    <span>累計退出 <span id="d-exit">0</span> 台</span>
   </div>
 
   <div class="controls">
     <div class="ctrl">
-      <div class="row"><label for="lamA">注目車線 ポアソン到着率 λ</label><span class="val" id="lamA-v">10 台/min</span></div>
-      <input type="range" id="lamA" min="2" max="30" step="1" value="10">
-      <div class="hint">平均 λ 台/min で到着。入口に空き（6m）が無ければ待ち行列へ。</div>
+      <div class="row"><label for="lamNB">北行き車線 到着率（南端から進入）</label><span class="val" id="lamNB-v">10 台/min</span></div>
+      <input type="range" id="lamNB" min="1" max="24" step="1" value="10">
+      <div class="hint">南の端から進入し、交差点を北へ通過する車の到着率。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="lamB">対向車線 ポアソン到着率 λ</label><span class="val" id="lamB-v">10 台/min</span></div>
-      <input type="range" id="lamB" min="2" max="30" step="1" value="10">
-      <div class="hint">対向車線の到着率。右折の通しやすさに直結する。</div>
+      <div class="row"><label for="lamSB">南行き車線 到着率（北端から進入）</label><span class="val" id="lamSB-v">10 台/min</span></div>
+      <input type="range" id="lamSB" min="1" max="24" step="1" value="10">
+      <div class="hint">北の端から進入し、交差点を南へ通過する車の到着率。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="g">青の割合（青:赤の点灯比率）</label><span class="val" id="g-v">青30s / 赤30s</span></div>
+      <div class="row"><label for="lamEB">東行き車線 到着率（西端から進入）</label><span class="val" id="lamEB-v">10 台/min</span></div>
+      <input type="range" id="lamEB" min="1" max="24" step="1" value="10">
+      <div class="hint">西の端から進入し、交差点を東へ通過する車の到着率。</div>
+    </div>
+
+    <div class="ctrl">
+      <div class="row"><label for="lamWB">西行き車線 到着率（東端から進入）</label><span class="val" id="lamWB-v">10 台/min</span></div>
+      <input type="range" id="lamWB" min="1" max="24" step="1" value="10">
+      <div class="hint">東の端から進入し、交差点を西へ通過する車の到着率。</div>
+    </div>
+
+    <div class="ctrl">
+      <div class="row"><label for="g">南北方向の青の割合</label><span class="val" id="g-v">青30s / 赤30s</span></div>
       <input type="range" id="g" min="0.2" max="0.8" step="0.05" value="0.5">
-      <div class="hint">サイクル60s に対する青の比率 g。両車線とも同位相で青/赤になる。</div>
+      <div class="hint">サイクル60s のうち南北が青の比率 g。東西はその残り（1−g）が青になる2現示信号。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="gap">右折許容ギャップ距離 D</label><span class="val" id="gap-v">60 m</span></div>
-      <input type="range" id="gap" min="10" max="200" step="5" value="60">
+      <div class="row"><label for="gap">右折許容ギャップ距離 D</label><span class="val" id="gap-v">50 m</span></div>
+      <input type="range" id="gap" min="10" max="150" step="5" value="50">
       <div class="hint">対向車線で直進・左折する車が交差点から D m 以内にいなければ右折可。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="approach">進入路長（交差点までの距離）</label><span class="val" id="approach-v">600 m</span></div>
-      <input type="range" id="approach" min="300" max="1200" step="50" value="600">
-      <div class="hint">各車線の交差点までの区間長。短いほど待ち行列があふれやすい。</div>
+      <div class="row"><label for="armlen">進入路長（交差点までの距離）</label><span class="val" id="armlen-v">250 m</span></div>
+      <input type="range" id="armlen" min="100" max="500" step="10" value="250">
+      <div class="hint">各アームの交差点までの区間長。短いほど待ち行列があふれやすい。</div>
     </div>
   </div>
 </div>
@@ -159,187 +172,257 @@ try{
   var K_JAM=1000/(CARLEN+JAMGAP);          // 166.7 台/km
   function vEq(r){ if(r<=JAMGAP) return 0; var v=VFREE*(1-JAMGAP/r); return v<0?0:(v>VFREE?VFREE:v); }
   var K_CRIT=(function(){ var best=0,kc=0; for(var r=JAMGAP+0.05;r<=300;r+=0.05){ var q=vEq(r)/(r+CARLEN); if(q>best){best=q; kc=1000/(r+CARLEN);} } return kc; })();
-  function isGreen(t){ var ph=(t%CYCLE+CYCLE)%CYCLE; return ph < P.g*CYCLE; }
   function expSample(lam){ if(lam<=0) return Infinity; return -Math.log(1-Math.random())/lam; }
   function sampleTurn(){ var r=Math.random(); if(r<0.25) return 'L'; if(r<0.75) return 'S'; return 'R'; }
 
-  // ===== 可変パラメータ =====
-  var P={lamA:10, lamB:10, g:0.5, gapD:60, approach:600};
+  // 4方向の定義: NB=北行き, SB=南行き, EB=東行き, WB=西行き
+  var DIRS=['NB','SB','EB','WB'];
+  var AXIS={NB:'NS', SB:'NS', EB:'EW', WB:'EW'};
+  var OPPOSITE={NB:'SB', SB:'NB', EB:'WB', WB:'EB'};
+  // 進行方向 dir で turn を選んだときの行き先レーン（出口側）
+  var TURN_MAP={
+    NB:{S:'NB', L:'WB', R:'EB'},
+    SB:{S:'SB', L:'EB', R:'WB'},
+    EB:{S:'EB', L:'NB', R:'SB'},
+    WB:{S:'WB', L:'SB', R:'NB'}
+  };
+  function isGreenNS(t){ var ph=(t%CYCLE+CYCLE)%CYCLE; return ph < P.g*CYCLE; }
+  function isGreenFor(d,t){ var g=isGreenNS(t); return AXIS[d]==='NS'?g:!g; }
 
-  // ===== 状態 =====
-  var carsA=[], carsB=[], simT=0, running=true, speedMult=4;
-  var Q={A:0,B:0}, nextArr={A:0,B:0};
-  var STAT={passedS:0,passedL:0,passedR:0,travelSum:0,travelCnt:0};
-  var dens={A:{sum:0,cnt:0,max:0,series:[]}, B:{sum:0,cnt:0,max:0,series:[]}};
-  var lastChart=0;
+  // ===== 可変パラメータ =====
+  var P={lam:{NB:10,SB:10,EB:10,WB:10}, g:0.5, gapD:50, armLen:250};
+
+  // ===== 状態: L[dir+'_in'] / L[dir+'_out'] に車両配列 =====
+  var L, simT, running=true, speedMult=4, Q, nextArr, STAT, dens, axisSeries, lastChart;
 
   function resetSim(){
-    carsA=[]; carsB=[]; simT=0; Q.A=0; Q.B=0;
-    nextArr.A=expSample(P.lamA); nextArr.B=expSample(P.lamB);
+    L={};
+    DIRS.forEach(function(d){ L[d+'_in']=[]; L[d+'_out']=[]; });
+    simT=0;
+    Q={NB:0,SB:0,EB:0,WB:0};
+    nextArr={};
+    DIRS.forEach(function(d){ nextArr[d]=expSample(P.lam[d]); });
     STAT={passedS:0,passedL:0,passedR:0,travelSum:0,travelCnt:0};
-    dens={A:{sum:0,cnt:0,max:0,series:[]}, B:{sum:0,cnt:0,max:0,series:[]}};
+    dens={}; DIRS.forEach(function(d){ dens[d]={sum:0,cnt:0,max:0}; });
+    axisSeries={NS:[],EW:[]};
     lastChart=0;
   }
 
-  function laneCars(w){ return w==='A'?carsA:carsB; }
+  function countInbound(d){ var arr=L[d+'_in'], n=0; for(var i=0;i<arr.length;i++){ var x=arr[i].x; if(x>=0&&x<=P.armLen)n++; } return n; }
+  function densityNow(d){ return countInbound(d)*1000/P.armLen; }
+  function waitingCount(d){ var arr=L[d+'_in'], c=0; for(var i=0;i<arr.length;i++){ if(arr[i].turn==='R'&&arr[i].waiting) c++; } return c; }
 
-  function countN(w){ var arr=laneCars(w), n=0; for(var i=0;i<arr.length;i++){ var x=arr[i].x; if(x>=0&&x<=P.approach)n++; } return n; }
-  function densityNow(w){ return countN(w)*1000/P.approach; }
-  function waitingCount(w){ var arr=laneCars(w), c=0; for(var i=0;i<arr.length;i++){ if(arr[i].turn==='R'&&arr[i].waiting) c++; } return c; }
-
-  // 対向車線に、直進・左折する車が交差点から gapD m 以内にいないか（いなければ右折可）
-  function computeGapOpen(otherCars, gapD){
-    for(var j=0;j<otherCars.length;j++){
-      var c=otherCars[j];
-      if((c.turn==='S'||c.turn==='L') && (P.approach-c.x)<=gapD) return false;
+  // 対向車線（opposite）に、直進・左折する車が交差点から gapD m 以内にいないか
+  function computeGapOpen(oppCars, gapD){
+    for(var j=0;j<oppCars.length;j++){
+      var c=oppCars[j];
+      if((c.turn==='S'||c.turn==='L') && (P.armLen-c.x)<=gapD) return false;
     }
     return true;
   }
   function stopLineObs(car, green, gapOpen){
-    if(!green) return P.approach;
+    if(!green) return P.armLen;
     if(car.turn!=='R') return Infinity;
-    return gapOpen ? Infinity : P.approach;
+    return gapOpen ? Infinity : P.armLen;
   }
 
-  function advanceLane(laneCars_, green, gapOpen){
-    laneCars_.sort(function(a,b){return b.x-a.x;});
+  function advanceInbound(d, green, gapOpen){
+    var arr=L[d+'_in'];
+    arr.sort(function(a,b){return b.x-a.x;});
     var i;
-    for(i=0;i<laneCars_.length;i++){
+    for(i=0;i<arr.length;i++){
       var obs=Infinity;
-      if(i>0) obs=laneCars_[i-1].x-CARLEN;
-      var sp=stopLineObs(laneCars_[i],green,gapOpen);
+      if(i>0) obs=arr[i-1].x-CARLEN;
+      var sp=stopLineObs(arr[i],green,gapOpen);
       if(sp<Infinity) obs=Math.min(obs,sp);
-      laneCars_[i].v=vEq(obs-laneCars_[i].x);
-      laneCars_[i].waiting=(sp<Infinity) && laneCars_[i].turn==='R';
+      arr[i].v=vEq(obs-arr[i].x);
+      arr[i].waiting=(sp<Infinity) && arr[i].turn==='R';
     }
-    for(i=0;i<laneCars_.length;i++) laneCars_[i].x+=laneCars_[i].v*DT;
-    laneCars_.sort(function(a,b){return b.x-a.x;});
-    for(i=0;i<laneCars_.length;i++){
+    for(i=0;i<arr.length;i++) arr[i].x+=arr[i].v*DT;
+    arr.sort(function(a,b){return b.x-a.x;});
+    for(i=0;i<arr.length;i++){
       var cap=Infinity;
-      var sp2=stopLineObs(laneCars_[i],green,gapOpen);
+      var sp2=stopLineObs(arr[i],green,gapOpen);
       if(sp2<Infinity) cap=Math.min(cap,sp2);
-      if(i>0) cap=Math.min(cap, laneCars_[i-1].x-CARLEN-JAMGAP);
-      if(laneCars_[i].x>cap) laneCars_[i].x=cap;
+      if(i>0) cap=Math.min(cap, arr[i-1].x-CARLEN-JAMGAP);
+      if(arr[i].x>cap) arr[i].x=cap;
     }
   }
 
-  function processExits(laneCars_, gapOpen, green){
-    var kept=[];
-    for(var i=0;i<laneCars_.length;i++){
-      var car=laneCars_[i];
-      if(car.x>=P.approach-1e-6){
+  function advanceOutbound(d){
+    var arr=L[d+'_out'];
+    arr.sort(function(a,b){return b.x-a.x;});
+    var i;
+    for(i=0;i<arr.length;i++){
+      var obs=Infinity;
+      if(i>0) obs=arr[i-1].x-CARLEN;
+      arr[i].v=vEq(obs-arr[i].x);
+      arr[i].waiting=false;
+    }
+    for(i=0;i<arr.length;i++) arr[i].x+=arr[i].v*DT;
+    arr.sort(function(a,b){return b.x-a.x;});
+    for(i=0;i<arr.length;i++){
+      var cap=Infinity;
+      if(i>0) cap=arr[i-1].x-CARLEN-JAMGAP;
+      if(arr[i].x>cap) arr[i].x=cap;
+    }
+  }
+
+  function transferInboundToOutbound(d, green, gapOpen){
+    var arr=L[d+'_in'], kept=[];
+    for(var i=0;i<arr.length;i++){
+      var car=arr[i];
+      if(car.x>=P.armLen-1e-6){
         var can=green && (car.turn!=='R' || gapOpen);
         if(can){
           STAT['passed'+car.turn]++;
-          STAT.travelSum+=(simT-car.arriveT); STAT.travelCnt++;
+          var destDir=TURN_MAP[d][car.turn];
+          L[destDir+'_out'].push({x:0,v:0,turn:null,arriveT:car.arriveT,waiting:false});
           continue;
-        } else { car.x=P.approach; kept.push(car); }
+        } else { car.x=P.armLen; kept.push(car); }
       } else kept.push(car);
     }
-    return kept;
+    L[d+'_in']=kept;
   }
 
-  function tryEnter(w){
-    if(Q[w]<=0) return;
-    var arr=laneCars(w);
+  function removeExitedOutbound(d){
+    var arr=L[d+'_out'], kept=[];
+    for(var i=0;i<arr.length;i++){
+      var car=arr[i];
+      if(car.x>=P.armLen-1e-6){
+        STAT.travelSum+=(simT-car.arriveT); STAT.travelCnt++;
+      } else kept.push(car);
+    }
+    L[d+'_out']=kept;
+  }
+
+  function tryEnterInbound(d){
+    if(Q[d]<=0) return;
+    var arr=L[d+'_in'];
     var minx=Infinity;
     for(var i=0;i<arr.length;i++) if(arr[i].x<minx) minx=arr[i].x;
     if(arr.length===0 || minx>=CARLEN+JAMGAP){
       arr.push({x:0,v:0,turn:sampleTurn(),arriveT:simT,waiting:false});
-      Q[w]--;
+      Q[d]--;
     }
   }
 
-  function recordDensity(w){
-    var d=dens[w], k=densityNow(w);
-    if(simT>=WARMUP){ d.sum+=k; d.cnt++; if(k>d.max) d.max=k; }
-    if(simT-lastChart>=0.1){ d.series.push({t:simT,k:k}); while(d.series.length && simT-d.series[0].t>WINDOW+0.5) d.series.shift(); }
+  function recordDensity(){
+    DIRS.forEach(function(d){
+      var k=densityNow(d), s=dens[d];
+      if(simT>=WARMUP){ s.sum+=k; s.cnt++; if(k>s.max) s.max=k; }
+    });
+    if(simT-lastChart>=0.1){
+      var kNS=(densityNow('NB')+densityNow('SB'))/2, kEW=(densityNow('EB')+densityNow('WB'))/2;
+      axisSeries.NS.push({t:simT,k:kNS}); axisSeries.EW.push({t:simT,k:kEW});
+      while(axisSeries.NS.length && simT-axisSeries.NS[0].t>WINDOW+0.5) axisSeries.NS.shift();
+      while(axisSeries.EW.length && simT-axisSeries.EW[0].t>WINDOW+0.5) axisSeries.EW.shift();
+      lastChart=simT;
+    }
   }
 
   // ===== 1ステップ =====
   function step(){
     simT+=DT;
-    while(simT>=nextArr.A){ Q.A++; nextArr.A+=expSample(P.lamA); }
-    while(simT>=nextArr.B){ Q.B++; nextArr.B+=expSample(P.lamB); }
+    DIRS.forEach(function(d){ while(simT>=nextArr[d]){ Q[d]++; nextArr[d]+=expSample(P.lam[d]); } });
 
-    var green=isGreen(simT);
-    var gapOpenA=computeGapOpen(carsB,P.gapD); // 注目車線の右折者が見るのは対向(=B)
-    var gapOpenB=computeGapOpen(carsA,P.gapD); // 対向車線の右折者が見るのは注目(=A)
+    var green={}, gapOpen={};
+    DIRS.forEach(function(d){ green[d]=isGreenFor(d,simT); });
+    DIRS.forEach(function(d){ gapOpen[d]=computeGapOpen(L[OPPOSITE[d]+'_in'], P.gapD); });
 
-    advanceLane(carsA, green, gapOpenA);
-    advanceLane(carsB, green, gapOpenB);
+    DIRS.forEach(function(d){ advanceInbound(d, green[d], gapOpen[d]); });
+    DIRS.forEach(function(d){ advanceOutbound(d); });
+    DIRS.forEach(function(d){ transferInboundToOutbound(d, green[d], gapOpen[d]); });
+    DIRS.forEach(function(d){ removeExitedOutbound(d); });
+    DIRS.forEach(function(d){ tryEnterInbound(d); });
 
-    carsA=processExits(carsA, gapOpenA, green);
-    carsB=processExits(carsB, gapOpenB, green);
-
-    tryEnter('A'); tryEnter('B');
-
-    recordDensity('A'); recordDensity('B');
-    if(simT-lastChart>=0.1) lastChart=simT;
+    recordDensity();
   }
 
   // ===== 交差点描画 =====
   var road=document.getElementById('road'), rctx=road.getContext('2d');
-  var CW=800,CH=220,dpr=1,leftPad=12,rightPad=12,boxHalf=16,laneGap=22;
+  var CW=800,CH=560,dpr=1,cx=400,cy=280,boxHalf=22,laneOff=9,armPix=200,scale=1;
   var MONO='ui-monospace,Menlo,Consolas,monospace';
   function layoutRoad(){
     dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
-    CW=road.parentElement.clientWidth-24; if(CW<320)CW=320;
-    CH=220;
+    CW=road.parentElement.clientWidth-24; if(CW<340)CW=340;
+    CH=Math.max(380,Math.min(CW*0.85,620));
     road.style.width=CW+'px'; road.style.height=CH+'px';
     road.width=CW*dpr; road.height=CH*dpr; rctx.setTransform(dpr,0,0,dpr,0,0);
+    cx=CW/2; cy=CH/2;
+    armPix=Math.max(60, Math.min(cx,cy)-boxHalf-26);
+    scale=armPix/P.armLen;
   }
-  function centerX(){ return CW/2; }
-  function xA(x){ var cx=centerX(); return leftPad+(x/P.approach)*(cx-boxHalf-leftPad); }
-  function xB(x){ var cx=centerX(); return (cx+boxHalf)+((P.approach-x)/P.approach)*(CW-rightPad-(cx+boxHalf)); }
-  function yA(){ return CH/2-laneGap/2; }
-  function yB(){ return CH/2+laneGap/2; }
-  function speedAlpha(v){ return 0.5+0.5*Math.max(0,Math.min(1,v/VFREE)); }
+  // dir(NB/SB/EB/WB) + seg(in/out) + 距離x(m, 0=遠端側 or 交差点直後, armLen=交差点側 or 遠端) → 画面座標
+  function segPos(d, seg, xm){
+    var t=xm/P.armLen;
+    if(d==='NB'){ return { x:cx-laneOff, y: seg==='in' ? (cy+boxHalf+armPix*(1-t)) : (cy-boxHalf-armPix*t) }; }
+    if(d==='SB'){ return { x:cx+laneOff, y: seg==='in' ? (cy-boxHalf-armPix*(1-t)) : (cy+boxHalf+armPix*t) }; }
+    if(d==='EB'){ return { x: seg==='in' ? (cx-boxHalf-armPix*(1-t)) : (cx+boxHalf+armPix*t), y:cy-laneOff }; }
+    return { x: seg==='in' ? (cx+boxHalf+armPix*(1-t)) : (cx-boxHalf-armPix*t), y:cy+laneOff }; // WB
+  }
+  function speedAlpha(v){ return 0.55+0.45*Math.max(0,Math.min(1,v/VFREE)); }
   function turnColor(car){
+    if(car.turn===null) return '#5c7480';
     if(car.turn==='L') return '#3ad07a';
     if(car.turn==='R') return car.waiting?'#ff5a52':'#ffc24b';
     return '#37c2c4';
   }
   function drawIntersection(){
     rctx.clearRect(0,0,CW,CH);
-    var cx=centerX();
-    // 交差する道路（縦・見た目のみ、交通量は考えない）
-    rctx.fillStyle='#1c2531';
-    rctx.fillRect(cx-boxHalf-6,0,2*(boxHalf+6),CH);
-    // 横の道路（本線）
-    var h=12;
+    // 縦の道路（南北）
     rctx.fillStyle='#222a35';
-    rctx.fillRect(leftPad-3,yA()-h/2,CW-leftPad-rightPad+6,h);
-    rctx.fillRect(leftPad-3,yB()-h/2,CW-leftPad-rightPad+6,h);
-    // センターライン
-    rctx.strokeStyle='#f2c94c'; rctx.globalAlpha=.5; rctx.setLineDash([6,5]); rctx.lineWidth=1.4;
-    rctx.beginPath(); rctx.moveTo(leftPad,CH/2); rctx.lineTo(CW-rightPad,CH/2); rctx.stroke();
+    rctx.fillRect(cx-laneOff-8,0,2*(laneOff+8),CH);
+    // 横の道路（東西）
+    rctx.fillRect(0,cy-laneOff-8,CW,2*(laneOff+8));
+    // 交差点ボックス
+    rctx.fillStyle='#2a3442';
+    rctx.fillRect(cx-boxHalf,cy-boxHalf,boxHalf*2,boxHalf*2);
+    // センターライン（縦・横）
+    rctx.strokeStyle='#f2c94c'; rctx.globalAlpha=.55; rctx.setLineDash([6,5]); rctx.lineWidth=1.3;
+    rctx.beginPath(); rctx.moveTo(cx,0); rctx.lineTo(cx,cy-boxHalf); rctx.moveTo(cx,cy+boxHalf); rctx.lineTo(cx,CH); rctx.stroke();
+    rctx.beginPath(); rctx.moveTo(0,cy); rctx.lineTo(cx-boxHalf,cy); rctx.moveTo(cx+boxHalf,cy); rctx.lineTo(CW,cy); rctx.stroke();
     rctx.setLineDash([]); rctx.globalAlpha=1;
     // 停止線
     rctx.fillStyle='#dfe7ee';
-    rctx.fillRect(cx-boxHalf-3,yA()-h/2-2,3,h+4);
-    rctx.fillRect(cx+boxHalf,yB()-h/2-2,3,h+4);
-    // 信号
-    var green=isGreen(simT);
-    rctx.beginPath(); rctx.arc(cx,14,6,0,Math.PI*2); rctx.fillStyle=green?'#3ad07a':'#ff5a52'; rctx.fill();
-    // 車（注目車線 A：左→中央へ）
-    var clen=8, cw=6, i;
-    for(i=0;i<carsA.length;i++){ var c=carsA[i]; if(c.x<0||c.x>P.approach) continue;
-      var px=xA(c.x); rctx.globalAlpha=speedAlpha(c.v); rctx.fillStyle=turnColor(c);
-      rctx.fillRect(px-clen,yA()-cw/2,clen,cw); }
-    // 車（対向車線 B：右→中央へ）
-    for(i=0;i<carsB.length;i++){ var c2=carsB[i]; if(c2.x<0||c2.x>P.approach) continue;
-      var px2=xB(c2.x); rctx.globalAlpha=speedAlpha(c2.v); rctx.fillStyle=turnColor(c2);
-      rctx.fillRect(px2,yB()-cw/2,clen,cw); }
+    rctx.fillRect(cx-boxHalf-laneOff*2,cy+boxHalf-1.5,laneOff*2,3);   // NB stop (south side, west lane)
+    rctx.fillRect(cx+0,cy-boxHalf-1.5,laneOff*2,3);                    // SB stop (north side, east lane)
+    rctx.fillRect(cx-boxHalf-1.5,cy+0,3,laneOff*2);                    // EB stop (west side, north lane)
+    rctx.fillRect(cx+boxHalf-1.5,cy-boxHalf-laneOff*2,3,laneOff*2);    // WB stop (east side, south lane)
+    // 信号（南北・東西）
+    var gNS=isGreenNS(simT);
+    rctx.beginPath(); rctx.arc(cx-boxHalf-14,cy-boxHalf-14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#3ad07a':'#ff5a52'; rctx.fill();
+    rctx.beginPath(); rctx.arc(cx+boxHalf+14,cy+boxHalf+14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#3ad07a':'#ff5a52'; rctx.fill();
+    rctx.beginPath(); rctx.arc(cx+boxHalf+14,cy-boxHalf-14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#ff5a52':'#3ad07a'; rctx.fill();
+    rctx.beginPath(); rctx.arc(cx-boxHalf-14,cy+boxHalf+14,6,0,Math.PI*2); rctx.fillStyle=gNS?'#ff5a52':'#3ad07a'; rctx.fill();
+
+    // 車両描画：長さ(進行方向)は車間から逆算し重ならない最大値、太さは視認性優先で固定気味に
+    var pitchPx=scale*(CARLEN+JAMGAP), clen=Math.max(3, pitchPx-2), cw=Math.max(6,Math.min(11,clen*0.95));
+    function drawCar(p, vertical, color, alpha){
+      rctx.globalAlpha=alpha; rctx.fillStyle=color;
+      if(vertical) rctx.fillRect(p.x-cw/2, p.y-clen/2, cw, clen);
+      else rctx.fillRect(p.x-clen/2, p.y-cw/2, clen, cw);
+    }
+    function drawSeg(d, seg, vertical){
+      var arr=L[d+'_'+seg];
+      for(var i=0;i<arr.length;i++){ var c=arr[i]; if(c.x<0||c.x>P.armLen) continue;
+        var p=segPos(d,seg,c.x); drawCar(p, vertical, turnColor(c), speedAlpha(c.v)); }
+    }
+    drawSeg('NB','in',true); drawSeg('NB','out',true);
+    drawSeg('SB','in',true); drawSeg('SB','out',true);
+    drawSeg('EB','in',false); drawSeg('EB','out',false);
+    drawSeg('WB','in',false); drawSeg('WB','out',false);
     rctx.globalAlpha=1;
+
     // ラベル
-    rctx.font='10px '+MONO; rctx.fillStyle='#93a2b3'; rctx.textAlign='left'; rctx.textBaseline='middle';
-    rctx.fillText('注目車線 →',leftPad,yA()-14);
-    rctx.textAlign='right';
-    rctx.fillText('← 対向車線',CW-rightPad,yB()+14);
+    rctx.font='10px '+MONO; rctx.fillStyle='#93a2b3'; rctx.textAlign='center'; rctx.textBaseline='middle';
+    rctx.fillText('N',cx,14);
+    rctx.fillText('S',cx,CH-14);
+    rctx.fillText('W',16,cy);
+    rctx.fillText('E',CW-16,cy);
   }
 
-  // ===== 密度チャート（2系列）=====
+  // ===== 密度チャート（南北軸・東西軸の2系列）=====
   var densC=document.getElementById('dens'), dctx=densC.getContext('2d');
   var DW=800,DH=150;
   function layoutDens(){ DW=densC.parentElement.clientWidth-24; if(DW<280)DW=280; DH=150;
@@ -366,32 +449,40 @@ try{
       dctx.strokeStyle=color; dctx.lineWidth=2; dctx.stroke();
       dctx.setLineDash([]);
     }
-    drawSeries(dens.A.series,'#37c2c4',[]);
-    drawSeries(dens.B.series,'#f2a154',[6,4]);
+    drawSeries(axisSeries.NS,'#37c2c4',[]);
+    drawSeries(axisSeries.EW,'#f2a154',[6,4]);
   }
 
   // ===== HUD =====
-  function fmtRatio(a,b){ return (b?( (a/b).toFixed(2) ):'—'); }
   function updateHUD(){
-    var kA=densityNow('A'), kB=densityNow('B');
-    document.getElementById('s-densA').textContent=kA.toFixed(1);
-    document.getElementById('s-densB').textContent=kB.toFixed(1);
-    document.getElementById('s-qA').textContent=waitingCount('A');
-    document.getElementById('s-qB').textContent=waitingCount('B');
+    var k={}; DIRS.forEach(function(d){ k[d]=densityNow(d); });
+    document.getElementById('s-dNB').textContent=k.NB.toFixed(1);
+    document.getElementById('s-dSB').textContent=k.SB.toFixed(1);
+    document.getElementById('s-dEB').textContent=k.EB.toFixed(1);
+    document.getElementById('s-dWB').textContent=k.WB.toFixed(1);
+    document.getElementById('s-qNB').textContent=waitingCount('NB');
+    document.getElementById('s-qSB').textContent=waitingCount('SB');
+    document.getElementById('s-qEB').textContent=waitingCount('EB');
+    document.getElementById('s-qWB').textContent=waitingCount('WB');
     var travel=STAT.travelCnt? (STAT.travelSum/STAT.travelCnt)*60 : 0;
     document.getElementById('s-travel').textContent=STAT.travelCnt? travel.toFixed(1) : '—';
-    var ratio=Math.max(kA,kB)/K_CRIT;
+    var kmax=Math.max(k.NB,k.SB,k.EB,k.WB), ratio=kmax/K_CRIT;
     document.getElementById('s-rat').textContent=isFinite(ratio)?ratio.toFixed(2):'—';
     var el=document.getElementById('s-stat');
     if(ratio>1){ el.textContent='渋滞'; el.className='status st-over'; }
     else{ el.textContent='順調'; el.className='status st-under'; }
-    document.getElementById('d-qA').textContent=Q.A;
-    document.getElementById('d-qB').textContent=Q.B;
+    document.getElementById('d-qNB').textContent=Q.NB;
+    document.getElementById('d-qSB').textContent=Q.SB;
+    document.getElementById('d-qEB').textContent=Q.EB;
+    document.getElementById('d-qWB').textContent=Q.WB;
     document.getElementById('s-time').textContent=simT.toFixed(1);
-    document.getElementById('s-phase').textContent=isGreen(simT)?'青':'赤';
+    var gNS=isGreenNS(simT);
+    document.getElementById('s-phaseNS').textContent=gNS?'青':'赤';
+    document.getElementById('s-phaseEW').textContent=gNS?'赤':'青';
     document.getElementById('d-passS').textContent=STAT.passedS;
     document.getElementById('d-passL').textContent=STAT.passedL;
     document.getElementById('d-passR').textContent=STAT.passedR;
+    document.getElementById('d-exit').textContent=STAT.travelCnt;
   }
 
   // ===== ループ =====
@@ -407,14 +498,17 @@ try{
   }
 
   // ===== コントロール =====
+  resetSim();
   function bindRange(id,fmt,set){ var el=document.getElementById(id),out=document.getElementById(id+'-v');
     function upd(){ var v=parseFloat(el.value); set(v); if(out)out.textContent=fmt(v); } el.addEventListener('input',upd); upd(); }
 
-  bindRange('lamA', function(v){return v+' 台/min';}, function(v){ P.lamA=v; nextArr.A=simT+expSample(v); document.getElementById('d-lamA').textContent=v; });
-  bindRange('lamB', function(v){return v+' 台/min';}, function(v){ P.lamB=v; nextArr.B=simT+expSample(v); document.getElementById('d-lamB').textContent=v; });
+  bindRange('lamNB', function(v){return v+' 台/min';}, function(v){ P.lam.NB=v; nextArr.NB=simT+expSample(v); });
+  bindRange('lamSB', function(v){return v+' 台/min';}, function(v){ P.lam.SB=v; nextArr.SB=simT+expSample(v); });
+  bindRange('lamEB', function(v){return v+' 台/min';}, function(v){ P.lam.EB=v; nextArr.EB=simT+expSample(v); });
+  bindRange('lamWB', function(v){return v+' 台/min';}, function(v){ P.lam.WB=v; nextArr.WB=simT+expSample(v); });
   bindRange('g', function(v){ return '青'+Math.round(60*v)+'s / 赤'+Math.round(60*(1-v))+'s'; }, function(v){ P.g=v; });
   bindRange('gap', function(v){return v+' m';}, function(v){ P.gapD=v; document.getElementById('d-gap').textContent=v; });
-  bindRange('approach', function(v){return v+' m';}, function(v){ P.approach=v; });
+  bindRange('armlen', function(v){return v+' m';}, function(v){ P.armLen=v; layoutRoad(); });
 
   document.getElementById('btn-play').addEventListener('click',function(e){ running=!running; e.target.textContent=running?'⏸ 一時停止':'▶ 再生'; e.target.classList.toggle('primary',running); });
   document.getElementById('btn-reset').addEventListener('click',resetSim);
@@ -424,7 +518,6 @@ try{
   window.addEventListener('resize',function(){ layoutRoad(); layoutDens(); });
   document.getElementById('d-kcrit').textContent=K_CRIT.toFixed(0);
   document.getElementById('d-kjam').textContent=K_JAM.toFixed(0);
-  nextArr.A=expSample(P.lamA); nextArr.B=expSample(P.lamB);
   layoutRoad(); layoutDens(); requestAnimationFrame(frame);
 }catch(e){ fail(e); }
 })();
