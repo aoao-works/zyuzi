@@ -74,11 +74,9 @@
     <canvas id="road"></canvas>
     <pre id="err"></pre>
     <div class="legend">
-      <span><i style="background:#37c2c4"></i>直進</span>
-      <span><i style="background:#3ad07a"></i>左折</span>
-      <span><i style="background:#ffc24b"></i>右折（通行可）</span>
+      <span><i style="background:#37c2c4"></i>走行中（矢印＝進む方向：直進／左折／右折）</span>
       <span><i style="background:#ff5a52"></i>右折待ち／信号待ち</span>
-      <span><i style="background:#5c7480"></i>右左折・直進後（走行中）</span>
+      <span><i style="background:#5c7480"></i>交差点通過後（走行中）</span>
     </div>
   </div>
 
@@ -378,11 +376,27 @@ try{
     return { x: seg==='in' ? (cx+boxHalf+armPix*(1-t)) : (cx-boxHalf-armPix*t), y:cy+laneOff }; // WB
   }
   function speedAlpha(v){ return 0.55+0.45*Math.max(0,Math.min(1,v/VFREE)); }
+  // 車体色は「走行中／右折待ち／通過後」の3状態だけを表し、進路(左折・直進・右折)は矢印で示す
   function turnColor(car){
     if(car.turn===null) return '#5c7480';
-    if(car.turn==='L') return '#3ad07a';
-    if(car.turn==='R') return car.waiting?'#ff5a52':'#ffc24b';
-    return '#37c2c4';
+    return car.waiting ? '#ff5a52' : '#37c2c4';
+  }
+  // 進路(turn)に応じた退出方向(コンパス方位)の単位ベクトル。矢印はこの方向を指す。
+  var EXIT_VEC={NB:{x:0,y:-1}, SB:{x:0,y:1}, EB:{x:1,y:0}, WB:{x:-1,y:0}};
+  function drawTurnArrow(p, d, turn, size, alpha){
+    var exitDir=TURN_MAP[d][turn], vec=EXIT_VEC[exitDir];
+    var ang=Math.atan2(vec.y,vec.x);
+    rctx.save();
+    rctx.globalAlpha=alpha;
+    rctx.translate(p.x,p.y); rctx.rotate(ang);
+    rctx.beginPath();
+    rctx.moveTo(size*0.75,0);
+    rctx.lineTo(-size*0.45, size*0.5);
+    rctx.lineTo(-size*0.45,-size*0.5);
+    rctx.closePath();
+    rctx.fillStyle='#0b0f14';
+    rctx.fill();
+    rctx.restore();
   }
   function drawIntersection(){
     rctx.clearRect(0,0,CW,CH);
@@ -435,7 +449,10 @@ try{
       for(var i=0;i<arr.length;i++){ var c=arr[i];
         if(seg==='in'){ var dist=P.armLen-c.x; if(dist<0||dist>vr) continue; }
         else if(c.x<0||c.x>vr) continue;
-        var p=segPos(d,seg,c.x); drawCar(p, vertical, turnColor(c), speedAlpha(c.v)); }
+        var p=segPos(d,seg,c.x), a=speedAlpha(c.v);
+        drawCar(p, vertical, turnColor(c), a);
+        if(seg==='in' && c.turn) drawTurnArrow(p, d, c.turn, Math.min(clen,cw), a);
+      }
     }
     drawSeg('NB','in',true); drawSeg('NB','out',true);
     drawSeg('SB','in',true); drawSeg('SB','out',true);
