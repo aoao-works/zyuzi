@@ -77,7 +77,7 @@
   </div>
 
   <div class="stats">
-    <div class="stat lead"><div class="k">密度（北行/南行/東行/西行）</div><div class="v" style="font-size:14.5px"><span id="s-dNB">0.0</span>/<span id="s-dSB">0.0</span>/<span id="s-dEB">0.0</span>/<span id="s-dWB">0.0</span> <span class="u">台/km</span></div></div>
+    <div class="stat lead"><div class="k">密度（上下/左右）</div><div class="v" style="font-size:14.5px"><span id="s-dNS">0.0</span>/<span id="s-dEW">0.0</span> <span class="u">台/km</span></div></div>
     <div class="stat"><div class="k">右折待ち（北行/南行/東行/西行）</div><div class="v" style="font-size:14.5px"><span id="s-qNB">0</span>/<span id="s-qSB">0</span>/<span id="s-qEB">0</span>/<span id="s-qWB">0</span> <span class="u">台</span></div></div>
     <div class="stat"><div class="k">平均システム内滞在時間</div><div class="v"><span id="s-travel">—</span> <span class="u">秒</span></div></div>
     <div class="stat"><div class="k">渋滞判定（臨界密度比）</div><div class="v" style="font-size:16px"><span id="s-rat">—</span> <span class="status st-under" id="s-stat">—</span></div></div>
@@ -86,6 +86,11 @@
   <div class="panel">
     <h2>密度の推移（台/km・直近10分／実線=上下・破線=左右）</h2>
     <canvas id="dens"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>基本図（横軸=密度 台/km・縦軸=流量 台/min・破線=臨界密度）</h2>
+    <canvas id="flow"></canvas>
   </div>
 
   <div class="bar">
@@ -102,7 +107,8 @@
 
   <div class="info">
     <span>入口待ち 北<span id="d-qNB">0</span>/南<span id="d-qSB">0</span>/東<span id="d-qEB">0</span>/西<span id="d-qWB">0</span></span>
-    <span>右折ギャップ距離 D = <span id="d-gap">50</span> m</span>
+    <span>右折ギャップ距離 D = <span id="d-gap">50</span> m（固定）</span>
+    <span>進入路長 = <span id="d-armlen">250</span> m（固定）</span>
     <span>臨界密度 ≒ <span id="d-kcrit">0</span> 台/km</span>
     <span>ジャム密度 ≒ <span id="d-kjam">0</span> 台/km</span>
     <span>累計通過 直進<span id="d-passS">0</span> ／ 左折<span id="d-passL">0</span> ／ 右折<span id="d-passR">0</span></span>
@@ -111,38 +117,18 @@
 
   <div class="controls">
     <div class="ctrl">
-      <div class="row"><label for="lamNB">北行き 到着率</label><span class="val" id="lamNB-v">10 台/min</span></div>
-      <input type="range" id="lamNB" min="1" max="24" step="1" value="10">
+      <div class="row"><label for="lamNS">上下方向 到着率</label><span class="val" id="lamNS-v">13 台/min</span></div>
+      <input type="range" id="lamNS" min="1" max="24" step="1" value="13">
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="lamSB">南行き 到着率</label><span class="val" id="lamSB-v">10 台/min</span></div>
-      <input type="range" id="lamSB" min="1" max="24" step="1" value="10">
-    </div>
-
-    <div class="ctrl">
-      <div class="row"><label for="lamEB">東行き 到着率</label><span class="val" id="lamEB-v">10 台/min</span></div>
-      <input type="range" id="lamEB" min="1" max="24" step="1" value="10">
-    </div>
-
-    <div class="ctrl">
-      <div class="row"><label for="lamWB">西行き 到着率</label><span class="val" id="lamWB-v">10 台/min</span></div>
-      <input type="range" id="lamWB" min="1" max="24" step="1" value="10">
+      <div class="row"><label for="lamEW">左右方向 到着率</label><span class="val" id="lamEW-v">13 台/min</span></div>
+      <input type="range" id="lamEW" min="1" max="24" step="1" value="13">
     </div>
 
     <div class="ctrl">
       <div class="row"><label for="g">上下方向の青の割合</label><span class="val" id="g-v">青30s / 赤30s</span></div>
       <input type="range" id="g" min="0.2" max="0.8" step="0.05" value="0.5">
-    </div>
-
-    <div class="ctrl">
-      <div class="row"><label for="gap">右折ギャップ距離 D</label><span class="val" id="gap-v">50 m</span></div>
-      <input type="range" id="gap" min="10" max="150" step="5" value="50">
-    </div>
-
-    <div class="ctrl">
-      <div class="row"><label for="armlen">進入路長</label><span class="val" id="armlen-v">250 m</span></div>
-      <input type="range" id="armlen" min="100" max="500" step="10" value="250">
     </div>
   </div>
 </div>
@@ -158,7 +144,9 @@ try{
   var CYCLE=1, DT=0.01, WARMUP=1, WINDOW=10;
   var K_JAM=1000/(CARLEN+JAMGAP);          // 166.7 台/km
   function vEq(r){ if(r<=JAMGAP) return 0; var v=VFREE*(1-JAMGAP/r); return v<0?0:(v>VFREE?VFREE:v); }
-  var K_CRIT=(function(){ var best=0,kc=0; for(var r=JAMGAP+0.05;r<=300;r+=0.05){ var q=vEq(r)/(r+CARLEN); if(q>best){best=q; kc=1000/(r+CARLEN);} } return kc; })();
+  // q(r)=vEq(r)/(r+CARLEN) を最大化する車間距離 r* の解析解: r* = JAMGAP + sqrt(JAMGAP*(JAMGAP+CARLEN))
+  var R_CRIT=JAMGAP+Math.sqrt(JAMGAP*(JAMGAP+CARLEN));
+  var K_CRIT=1000/(R_CRIT+CARLEN);
   function expSample(lam){ if(lam<=0) return Infinity; return -Math.log(1-Math.random())/lam; }
   function sampleTurn(){ var r=Math.random(); if(r<0.25) return 'L'; if(r<0.75) return 'S'; return 'R'; }
 
@@ -177,7 +165,7 @@ try{
   function isGreenFor(d,t){ var g=isGreenNS(t); return AXIS[d]==='NS'?g:!g; }
 
   // ===== 可変パラメータ =====
-  var P={lam:{NB:10,SB:10,EB:10,WB:10}, g:0.5, gapD:50, armLen:250};
+  var P={lam:{NB:13,SB:13,EB:13,WB:13}, g:0.5, gapD:50, armLen:250};
 
   // ===== 状態: L[dir+'_in'] / L[dir+'_out'] に車両配列 =====
   var L, simT, running=true, speedMult=4, Q, nextArr, STAT, dens, axisSeries, lastChart;
@@ -500,20 +488,55 @@ try{
     drawSeries(axisSeries.EW,'#f2a154',[6,4]);
   }
 
+  // ===== 基本図（流量-密度カーブ）=====
+  // 密度k(台/km)から車頭間隔h(m/台)→車間r(m)→速度→流量q(台/min)を計算
+  function qOfK(k){ if(k<=0) return 0; var h=1000/k, r=h-CARLEN; return vEq(r)*k/1000; }
+  var Q_CRIT=qOfK(K_CRIT);
+  var flowC=document.getElementById('flow'), fctx=flowC.getContext('2d');
+  var FW=800,FH=170;
+  function layoutFlow(){ FW=flowC.parentElement.clientWidth-24; if(FW<280)FW=280; FH=170;
+    flowC.style.width=FW+'px'; flowC.style.height=FH+'px'; flowC.width=FW*dpr; flowC.height=FH*dpr; fctx.setTransform(dpr,0,0,dpr,0,0); }
+  function drawFlowChart(){
+    fctx.clearRect(0,0,FW,FH);
+    var pL=46,pR=12,pT=10,pB=20, x0=pL,x1=FW-pR,y0=FH-pB,y1=pT, kxmax=K_JAM, qymax=Q_CRIT*1.15;
+    function CX(k){ return x0+Math.min(k,kxmax)/kxmax*(x1-x0); }
+    function CY(q){ return y0-Math.min(q,qymax)/qymax*(y0-y1); }
+    fctx.font='10px '+MONO; fctx.textBaseline='middle'; fctx.textAlign='right';
+    for(var gq=0;gq<=4;gq++){ var qq=qymax*gq/4, yy=CY(qq);
+      fctx.strokeStyle='#283443'; fctx.globalAlpha=.6; fctx.beginPath();fctx.moveTo(x0,yy);fctx.lineTo(x1,yy);fctx.stroke(); fctx.globalAlpha=1;
+      fctx.fillStyle='#93a2b3'; fctx.fillText(qq.toFixed(1),x0-5,yy); }
+    fctx.textAlign='center'; fctx.textBaseline='top';
+    for(var gk=0;gk<=4;gk++){ var kk=kxmax*gk/4, xx=CX(kk);
+      fctx.fillStyle='#93a2b3'; fctx.fillText(Math.round(kk),xx,y0+4); }
+    // 流量-密度カーブ
+    fctx.beginPath();
+    for(var k=0;k<=kxmax;k+=kxmax/200){ var xx2=CX(k), yy2=CY(qOfK(k)); if(k===0) fctx.moveTo(xx2,yy2); else fctx.lineTo(xx2,yy2); }
+    fctx.strokeStyle='#37c2c4'; fctx.lineWidth=2; fctx.stroke();
+    // 臨界密度の縦線
+    fctx.setLineDash([5,4]); fctx.lineWidth=1.2; fctx.strokeStyle='#ffc24b';
+    fctx.beginPath(); fctx.moveTo(CX(K_CRIT),y0); fctx.lineTo(CX(K_CRIT),y1); fctx.stroke();
+    fctx.setLineDash([]);
+    fctx.fillStyle='#ffc24b'; fctx.textAlign='left'; fctx.textBaseline='bottom';
+    fctx.fillText('臨界密度 '+K_CRIT.toFixed(0)+' 台/km', CX(K_CRIT)+4, y1+12);
+    // 現在の上下/左右の密度点
+    var kNS=(densityNow('NB')+densityNow('SB'))/2, kEW=(densityNow('EB')+densityNow('WB'))/2;
+    function dot(k,color){ var xx3=CX(k), yy3=CY(qOfK(k)); fctx.beginPath(); fctx.arc(xx3,yy3,4,0,Math.PI*2); fctx.fillStyle=color; fctx.fill(); }
+    dot(kNS,'#37c2c4'); dot(kEW,'#f2a154');
+  }
+
   // ===== HUD =====
   function updateHUD(){
     var k={}; DIRS.forEach(function(d){ k[d]=densityNow(d); });
-    document.getElementById('s-dNB').textContent=k.NB.toFixed(1);
-    document.getElementById('s-dSB').textContent=k.SB.toFixed(1);
-    document.getElementById('s-dEB').textContent=k.EB.toFixed(1);
-    document.getElementById('s-dWB').textContent=k.WB.toFixed(1);
+    var kNS=(k.NB+k.SB)/2, kEW=(k.EB+k.WB)/2;
+    document.getElementById('s-dNS').textContent=kNS.toFixed(1);
+    document.getElementById('s-dEW').textContent=kEW.toFixed(1);
     document.getElementById('s-qNB').textContent=waitingCount('NB');
     document.getElementById('s-qSB').textContent=waitingCount('SB');
     document.getElementById('s-qEB').textContent=waitingCount('EB');
     document.getElementById('s-qWB').textContent=waitingCount('WB');
     var travel=STAT.travelCnt? (STAT.travelSum/STAT.travelCnt)*60 : 0;
     document.getElementById('s-travel').textContent=STAT.travelCnt? travel.toFixed(1) : '—';
-    var kmax=Math.max(k.NB,k.SB,k.EB,k.WB), ratio=kmax/K_CRIT;
+    var kmax=Math.max(kNS,kEW), ratio=kmax/K_CRIT;
     document.getElementById('s-rat').textContent=isFinite(ratio)?ratio.toFixed(2):'—';
     var el=document.getElementById('s-stat');
     if(ratio>1){ el.textContent='渋滞'; el.className='status st-over'; }
@@ -536,7 +559,7 @@ try{
       var realSec=Math.min(0.05,(ts-lastTs)/1000); lastTs=ts;
       if(running){ accMin+=(realSec/60)*speedMult; var guard=0; while(accMin>=DT && guard<400){ step(); accMin-=DT; guard++; } }
       drawIntersection(); updateHUD();
-      if(ts-lastSlow>150){ drawDensChart(); lastSlow=ts; }
+      if(ts-lastSlow>150){ drawDensChart(); drawFlowChart(); lastSlow=ts; }
     }catch(e){ fail(e); return; }
     requestAnimationFrame(frame);
   }
@@ -546,23 +569,21 @@ try{
   function bindRange(id,fmt,set){ var el=document.getElementById(id),out=document.getElementById(id+'-v');
     function upd(){ var v=parseFloat(el.value); set(v); if(out)out.textContent=fmt(v); } el.addEventListener('input',upd); upd(); }
 
-  bindRange('lamNB', function(v){return v+' 台/min';}, function(v){ P.lam.NB=v; nextArr.NB=simT+expSample(v); });
-  bindRange('lamSB', function(v){return v+' 台/min';}, function(v){ P.lam.SB=v; nextArr.SB=simT+expSample(v); });
-  bindRange('lamEB', function(v){return v+' 台/min';}, function(v){ P.lam.EB=v; nextArr.EB=simT+expSample(v); });
-  bindRange('lamWB', function(v){return v+' 台/min';}, function(v){ P.lam.WB=v; nextArr.WB=simT+expSample(v); });
+  bindRange('lamNS', function(v){return v+' 台/min';}, function(v){ P.lam.NB=v; P.lam.SB=v; nextArr.NB=simT+expSample(v); nextArr.SB=simT+expSample(v); });
+  bindRange('lamEW', function(v){return v+' 台/min';}, function(v){ P.lam.EB=v; P.lam.WB=v; nextArr.EB=simT+expSample(v); nextArr.WB=simT+expSample(v); });
   bindRange('g', function(v){ return '青'+Math.round(60*v)+'s / 赤'+Math.round(60*(1-v))+'s'; }, function(v){ P.g=v; });
-  bindRange('gap', function(v){return v+' m';}, function(v){ P.gapD=v; document.getElementById('d-gap').textContent=v; });
-  bindRange('armlen', function(v){return v+' m';}, function(v){ P.armLen=v; layoutRoad(); });
+  document.getElementById('d-gap').textContent=P.gapD;
+  document.getElementById('d-armlen').textContent=P.armLen;
 
   document.getElementById('btn-play').addEventListener('click',function(e){ running=!running; e.target.textContent=running?'⏸ 一時停止':'▶ 再生'; e.target.classList.toggle('primary',running); });
   document.getElementById('btn-reset').addEventListener('click',resetSim);
   var seg=document.querySelectorAll('#speedseg button');
   for(var b=0;b<seg.length;b++) seg[b].addEventListener('click',function(){ for(var z=0;z<seg.length;z++) seg[z].classList.remove('on'); this.classList.add('on'); speedMult=parseFloat(this.dataset.m); });
 
-  window.addEventListener('resize',function(){ layoutRoad(); layoutDens(); });
+  window.addEventListener('resize',function(){ layoutRoad(); layoutDens(); layoutFlow(); });
   document.getElementById('d-kcrit').textContent=K_CRIT.toFixed(0);
   document.getElementById('d-kjam').textContent=K_JAM.toFixed(0);
-  layoutRoad(); layoutDens(); requestAnimationFrame(frame);
+  layoutRoad(); layoutDens(); layoutFlow(); requestAnimationFrame(frame);
 }catch(e){ fail(e); }
 })();
 </script>
