@@ -199,22 +199,21 @@ try{
   function densityNow(d){ return countInbound(d)*1000/P.armLen; }
   function waitingCount(d){ var arr=L[d+'_in'], c=0; for(var i=0;i<arr.length;i++){ if(arr[i].turn==='R'&&arr[i].waiting) c++; } return c; }
 
-  // 対向車線（opposite）に、直進・左折する車が交差点から gapD m 以内にいないか
-  // 停止中（渋滞で詰まっているだけ）の対向車は実際には交差点に迫ってこないので、
-  // ギャップ判定では「動いている」対向車だけを脅威とみなす（そうしないと対向車線が
-  // 渋滞した瞬間に右折が永久に不可能になり、デッドロックする）。
-  var V_MOVE_EPS=VFREE*0.03;
   // それでも一定時間ギャップが来ない場合は強行して詰まりを解消する（現実の運転行動に近い安全弁）
   var MAX_RIGHT_WAIT=1.0; // 1分（信号1サイクル分）
 
   // 対向車線で今まさに交差点に迫る可能性があるのは先頭の1台だけ（単一車線・追い越し不可のため
   // その後ろの車は先頭車がはけるまで交差点に近づけない）。よって先頭車だけを見ればよい。
   // 先頭車が右折なら（＝自分も対向もどちらも右折）進路が交わらないため脅威にならず、常に通行可。
+  // gapOpenは自分の信号が青のときだけ使われ、対向（同じ軸）も常に同時に青になるため、
+  // 対向の先頭車が直進・左折で gapD 以内にいれば速度に関わらず脅威とみなす（速度で判定すると、
+  // 赤→青に切り替わった直後の1ステップだけ対向車の速度情報が古い(赤で停止=0)ままになり、
+  // 右折車がすり抜けてしまうため）。
   function computeGapOpen(oppCars, gapD){
     var front=null;
     for(var j=0;j<oppCars.length;j++){ var c=oppCars[j]; if(front===null||c.x>front.x) front=c; }
     if(!front) return true;
-    if((front.turn==='S'||front.turn==='L') && front.v>V_MOVE_EPS && (P.armLen-front.x)<=gapD) return false;
+    if((front.turn==='S'||front.turn==='L') && (P.armLen-front.x)<=gapD) return false;
     return true;
   }
   function stopLineObs(car, green, gapOpen){
