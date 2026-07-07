@@ -61,12 +61,8 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>十字路渋滞シミュレーション（片側1車線・右折ラインなし）</h1>
-    <span class="sub">
-      東西南北すべての方向から車が到着する単一の信号交差点。速度モデル v = 40(1 − 3/r) km/h（r = 前方障害物との車間 m）、到着はポアソン過程は前回モデルを踏襲。<br>
-      各車両は到着時に (左折, 直進, 右折) = (1/4, 1/2, 1/4) の確率で進路を決定。左折は青なら常に自由。右折は対向車線（同じ道路の反対方向）で直進・左折する車両が交差点から一定距離 D 以内にいなければ実行でき、いなければ交差点手前で停止して待つ（右折専用レーンが無いため後続車もブロックされる）。<br>
-      右左折・直進した車両は消滅せず、進んだ先の道路をそのまま走行し続け、マップ端まで到達して初めて退出する。信号は南北方向と東西方向で交互に青になる（2現示）。
-    </span>
+    <h1>十字路渋滞シミュレーション</h1>
+    <span class="sub">片側1車線・右折専用レーンなし。信号は上下／左右が交互に青になる。</span>
   </header>
 
   <div class="panel">
@@ -88,7 +84,7 @@
   </div>
 
   <div class="panel">
-    <h2>密度の推移（台/km・直近10分／実線=南北軸・破線=東西軸／橙細線=臨界密度・赤細線=ジャム密度）</h2>
+    <h2>密度の推移（台/km・直近10分／実線=上下・破線=左右）</h2>
     <canvas id="dens"></canvas>
   </div>
 
@@ -101,7 +97,7 @@
       <button data-m="4" class="on">4×</button>
       <button data-m="8">8×</button>
     </span>
-    <span class="clock">経過 <b id="s-time">0.0</b> min ／ 信号 南北<b id="s-phaseNS">青</b>・東西<b id="s-phaseEW">赤</b></span>
+    <span class="clock">経過 <b id="s-time">0.0</b> min</span>
   </div>
 
   <div class="info">
@@ -115,45 +111,38 @@
 
   <div class="controls">
     <div class="ctrl">
-      <div class="row"><label for="lamNB">北行き車線 到着率（南端から進入）</label><span class="val" id="lamNB-v">10 台/min</span></div>
+      <div class="row"><label for="lamNB">北行き 到着率</label><span class="val" id="lamNB-v">10 台/min</span></div>
       <input type="range" id="lamNB" min="1" max="24" step="1" value="10">
-      <div class="hint">南の端から進入し、交差点を北へ通過する車の到着率。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="lamSB">南行き車線 到着率（北端から進入）</label><span class="val" id="lamSB-v">10 台/min</span></div>
+      <div class="row"><label for="lamSB">南行き 到着率</label><span class="val" id="lamSB-v">10 台/min</span></div>
       <input type="range" id="lamSB" min="1" max="24" step="1" value="10">
-      <div class="hint">北の端から進入し、交差点を南へ通過する車の到着率。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="lamEB">東行き車線 到着率（西端から進入）</label><span class="val" id="lamEB-v">10 台/min</span></div>
+      <div class="row"><label for="lamEB">東行き 到着率</label><span class="val" id="lamEB-v">10 台/min</span></div>
       <input type="range" id="lamEB" min="1" max="24" step="1" value="10">
-      <div class="hint">西の端から進入し、交差点を東へ通過する車の到着率。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="lamWB">西行き車線 到着率（東端から進入）</label><span class="val" id="lamWB-v">10 台/min</span></div>
+      <div class="row"><label for="lamWB">西行き 到着率</label><span class="val" id="lamWB-v">10 台/min</span></div>
       <input type="range" id="lamWB" min="1" max="24" step="1" value="10">
-      <div class="hint">東の端から進入し、交差点を西へ通過する車の到着率。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="g">南北方向の青の割合</label><span class="val" id="g-v">青30s / 赤30s</span></div>
+      <div class="row"><label for="g">上下方向の青の割合</label><span class="val" id="g-v">青30s / 赤30s</span></div>
       <input type="range" id="g" min="0.2" max="0.8" step="0.05" value="0.5">
-      <div class="hint">サイクル60s のうち南北が青の比率 g。東西はその残り（1−g）が青になる2現示信号。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="gap">右折許容ギャップ距離 D</label><span class="val" id="gap-v">50 m</span></div>
+      <div class="row"><label for="gap">右折ギャップ距離 D</label><span class="val" id="gap-v">50 m</span></div>
       <input type="range" id="gap" min="10" max="150" step="5" value="50">
-      <div class="hint">対向車線で直進・左折する車が交差点から D m 以内にいなければ右折可。</div>
     </div>
 
     <div class="ctrl">
-      <div class="row"><label for="armlen">進入路長（交差点までの距離）</label><span class="val" id="armlen-v">250 m</span></div>
+      <div class="row"><label for="armlen">進入路長</label><span class="val" id="armlen-v">250 m</span></div>
       <input type="range" id="armlen" min="100" max="500" step="10" value="250">
-      <div class="hint">各アームの交差点までの区間長。短いほど待ち行列があふれやすい。</div>
     </div>
   </div>
 </div>
@@ -218,11 +207,14 @@ try{
   // それでも一定時間ギャップが来ない場合は強行して詰まりを解消する（現実の運転行動に近い安全弁）
   var MAX_RIGHT_WAIT=1.0; // 1分（信号1サイクル分）
 
+  // 対向車線で今まさに交差点に迫る可能性があるのは先頭の1台だけ（単一車線・追い越し不可のため
+  // その後ろの車は先頭車がはけるまで交差点に近づけない）。よって先頭車だけを見ればよい。
+  // 先頭車が右折なら（＝自分も対向もどちらも右折）進路が交わらないため脅威にならず、常に通行可。
   function computeGapOpen(oppCars, gapD){
-    for(var j=0;j<oppCars.length;j++){
-      var c=oppCars[j];
-      if((c.turn==='S'||c.turn==='L') && c.v>V_MOVE_EPS && (P.armLen-c.x)<=gapD) return false;
-    }
+    var front=null;
+    for(var j=0;j<oppCars.length;j++){ var c=oppCars[j]; if(front===null||c.x>front.x) front=c; }
+    if(!front) return true;
+    if((front.turn==='S'||front.turn==='L') && front.v>V_MOVE_EPS && (P.armLen-front.x)<=gapD) return false;
     return true;
   }
   function stopLineObs(car, green, gapOpen){
@@ -413,25 +405,35 @@ try{
     rctx.beginPath(); rctx.moveTo(cx,0); rctx.lineTo(cx,cy-boxHalf); rctx.moveTo(cx,cy+boxHalf); rctx.lineTo(cx,CH); rctx.stroke();
     rctx.beginPath(); rctx.moveTo(0,cy); rctx.lineTo(cx-boxHalf,cy); rctx.moveTo(cx+boxHalf,cy); rctx.lineTo(CW,cy); rctx.stroke();
     rctx.setLineDash([]); rctx.globalAlpha=1;
-    // 停止線
-    rctx.fillStyle='#dfe7ee';
-    rctx.fillRect(cx-boxHalf-laneOff*2,cy+boxHalf-1.5,laneOff*2,3);   // NB stop (south side, west lane)
-    rctx.fillRect(cx+0,cy-boxHalf-1.5,laneOff*2,3);                    // SB stop (north side, east lane)
-    rctx.fillRect(cx-boxHalf-1.5,cy+0,3,laneOff*2);                    // EB stop (west side, north lane)
-    rctx.fillRect(cx+boxHalf-1.5,cy-boxHalf-laneOff*2,3,laneOff*2);    // WB stop (east side, south lane)
-    // 信号：右上に1つだけパネルを置き、現在青の方向（上下／左右）だけを表示する
+    // 信号：右上に1つだけパネルを置く。ラベルは「上下」に固定し、色/文字だけ青⇔赤で切り替える
+    // （2現示なので左右は上下の逆と分かるため、これ1つで状態を表せる）
     var gNS=isGreenNS(simT);
+    // ゲート：各アームの停止線の位置に、その車線専用の色付きバーを置く（緑=青信号で通行可／赤=赤信号で停止）
+    function drawGate(x,y,vertical,green){
+      var barLen=laneOff*1.5, barW=6, color=green?'#3ad07a':'#ff5a52';
+      rctx.fillStyle=color;
+      if(vertical) rctx.fillRect(x-barLen/2,y-barW/2,barLen,barW);
+      else rctx.fillRect(x-barW/2,y-barLen/2,barW,barLen);
+      rctx.strokeStyle='#000'; rctx.globalAlpha=.3; rctx.lineWidth=1;
+      if(vertical) rctx.strokeRect(x-barLen/2,y-barW/2,barLen,barW);
+      else rctx.strokeRect(x-barW/2,y-barLen/2,barW,barLen);
+      rctx.globalAlpha=1;
+    }
+    drawGate(cx-laneOff, cy+boxHalf, true, gNS);    // NB（南から進入・北行き）
+    drawGate(cx+laneOff, cy-boxHalf, true, gNS);    // SB（北から進入・南行き）
+    drawGate(cx-boxHalf, cy-laneOff, false, !gNS);  // EB（西から進入・東行き）
+    drawGate(cx+boxHalf, cy+laneOff, false, !gNS);  // WB（東から進入・西行き）
     function drawSignalPanel(gNS){
-      var label=gNS?'上下':'左右';
-      var pw=118, ph=40, px=CW-pw-12, py=12, y=py+ph/2;
+      var color=gNS?'#3ad07a':'#ff5a52';
+      var pw=104, ph=40, px=CW-pw-12, py=12, y=py+ph/2;
       rctx.globalAlpha=0.94; rctx.fillStyle='#0b0f14'; rctx.fillRect(px,py,pw,ph);
       rctx.globalAlpha=1; rctx.strokeStyle='#3a4655'; rctx.lineWidth=1; rctx.strokeRect(px,py,pw,ph);
       rctx.beginPath(); rctx.arc(px+18,y,7,0,Math.PI*2);
-      rctx.fillStyle='#3ad07a'; rctx.fill();
+      rctx.fillStyle=color; rctx.fill();
       rctx.strokeStyle='#000'; rctx.globalAlpha=.25; rctx.lineWidth=1; rctx.stroke(); rctx.globalAlpha=1;
       rctx.font='bold 13px '+MONO; rctx.textAlign='left'; rctx.textBaseline='middle';
-      rctx.fillStyle='#3ad07a';
-      rctx.fillText(label+'：青', px+32, y);
+      rctx.fillStyle=color;
+      rctx.fillText('上下：'+(gNS?'青':'赤'), px+32, y);
     }
     drawSignalPanel(gNS);
     rctx.textAlign='left';
@@ -522,9 +524,6 @@ try{
     document.getElementById('d-qEB').textContent=Q.EB;
     document.getElementById('d-qWB').textContent=Q.WB;
     document.getElementById('s-time').textContent=simT.toFixed(1);
-    var gNS=isGreenNS(simT);
-    document.getElementById('s-phaseNS').textContent=gNS?'青':'赤';
-    document.getElementById('s-phaseEW').textContent=gNS?'赤':'青';
     document.getElementById('d-passS').textContent=STAT.passedS;
     document.getElementById('d-passL').textContent=STAT.passedL;
     document.getElementById('d-passR').textContent=STAT.passedR;
