@@ -86,11 +86,13 @@
   <div class="panel">
     <h2>密度の推移（台/km・直近10分／実線=上下・破線=左右）</h2>
     <canvas id="dens"></canvas>
+    <div style="margin-top:8px"><button id="btn-savedens-png">⬇ PNGで保存</button></div>
   </div>
 
   <div class="panel">
     <h2>基本図（横軸=密度 台/km・縦軸=流量 台/min・破線=臨界密度）</h2>
     <canvas id="flow"></canvas>
+    <div style="margin-top:8px"><button id="btn-savepng">⬇ PNGで保存</button></div>
   </div>
 
   <div class="bar">
@@ -577,6 +579,19 @@ try{
 
   document.getElementById('btn-play').addEventListener('click',function(e){ running=!running; e.target.textContent=running?'⏸ 一時停止':'▶ 再生'; e.target.classList.toggle('primary',running); });
   document.getElementById('btn-reset').addEventListener('click',resetSim);
+  function saveCanvasPng(srcCanvas, filename){
+    var out=document.createElement('canvas');
+    out.width=srcCanvas.width; out.height=srcCanvas.height;
+    var octx=out.getContext('2d');
+    octx.fillStyle='#141b24'; octx.fillRect(0,0,out.width,out.height);
+    octx.drawImage(srcCanvas,0,0);
+    var a=document.createElement('a');
+    a.download=filename;
+    a.href=out.toDataURL('image/png');
+    a.click();
+  }
+  document.getElementById('btn-savepng').addEventListener('click',function(){ saveCanvasPng(flowC,'基本図_臨界密度.png'); });
+  document.getElementById('btn-savedens-png').addEventListener('click',function(){ saveCanvasPng(densC,'密度の推移.png'); });
   var seg=document.querySelectorAll('#speedseg button');
   for(var b=0;b<seg.length;b++) seg[b].addEventListener('click',function(){ for(var z=0;z<seg.length;z++) seg[z].classList.remove('on'); this.classList.add('on'); speedMult=parseFloat(this.dataset.m); });
 
